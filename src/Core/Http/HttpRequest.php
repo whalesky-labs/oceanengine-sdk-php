@@ -54,6 +54,11 @@ class HttpRequest
     public static array $retryableBusinessCodes = [40100, 40110, 50000];
 
     /**
+     * 是否校验证书，或指定 CA 证书文件路径。
+     */
+    public static bool|string $verify = false;
+
+    /**
      * @var array<string, Client>
      */
     private static array $clientPool = [];
@@ -175,6 +180,18 @@ class HttpRequest
     }
 
     /**
+     * 设置 TLS 证书校验策略。
+     *
+     * @param bool $enabled 是否启用证书校验
+     * @param null|string $caPath CA 证书文件路径（仅在 enabled=true 时生效）
+     */
+    public static function setVerify(bool $enabled, ?string $caPath = null): void
+    {
+        self::$verify = self::buildVerifyValue($enabled, $caPath);
+        self::$clientPool = [];
+    }
+
+    /**
      * 设置运行环境模式。
      *
      * 支持 auto/fpm/cli/swoole，默认 auto（自动识别）。
@@ -237,7 +254,7 @@ class HttpRequest
 
         return new Client([
             'handler' => $stack,
-            'verify' => false,
+            'verify' => $config['verify'],
         ]);
     }
 
@@ -253,6 +270,7 @@ class HttpRequest
             'retry_delay' => $config['retry_delay'],
             'retryable_status_codes' => $config['retryable_status_codes'],
             'retryable_business_codes' => $config['retryable_business_codes'],
+            'verify' => $config['verify'],
         ], JSON_UNESCAPED_SLASHES));
     }
 
@@ -390,6 +408,7 @@ class HttpRequest
             'enable_retry' => $enableRetry,
             'max_retries' => $maxRetries,
             'retry_delay' => $retryDelay,
+            'verify' => self::normalizeVerifyValue($runtimeConfig['verify'] ?? null, self::$verify),
             'retryable_status_codes' => self::normalizeIntArray(
                 $runtimeConfig['retryable_status_codes'] ?? null,
                 self::$retryableStatusCodes
@@ -430,6 +449,40 @@ class HttpRequest
         }
 
         return $normalized === [] ? $default : array_values(array_unique($normalized));
+    }
+
+    /**
+     * @param mixed $value
+     * @param bool|string $default
+     */
+    private static function normalizeVerifyValue(mixed $value, bool|string $default): bool|string
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            return $trimmed === '' ? $default : $trimmed;
+        }
+
+        return $default;
+    }
+
+    private static function buildVerifyValue(bool $enabled, ?string $caPath = null): bool|string
+    {
+        if (! $enabled) {
+            return false;
+        }
+
+        if (is_string($caPath)) {
+            $trimmed = trim($caPath);
+            if ($trimmed !== '') {
+                return $trimmed;
+            }
+        }
+
+        return true;
     }
 
     /**

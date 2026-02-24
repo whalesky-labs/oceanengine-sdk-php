@@ -52,6 +52,8 @@ class OceanEngineClient
      */
     private array $retryableBusinessCodes;
 
+    private bool|string $verify;
+
     /**
      * 顶层模块映射缓存（模块名 => 命名空间）.
      *
@@ -79,6 +81,7 @@ class OceanEngineClient
         $this->retryDelay = HttpRequest::$retryDelay;
         $this->retryableStatusCodes = HttpRequest::$retryableStatusCodes;
         $this->retryableBusinessCodes = HttpRequest::$retryableBusinessCodes;
+        $this->verify = HttpRequest::$verify;
     }
 
     /**
@@ -245,6 +248,31 @@ class OceanEngineClient
     }
 
     /**
+     * 设置当前客户端实例 TLS 证书校验策略。
+     *
+     * @param bool $enabled 是否启用证书校验
+     * @param null|string $caPath CA 证书文件路径（仅在 enabled=true 时生效）
+     */
+    public function setVerify(bool $enabled, ?string $caPath = null): self
+    {
+        if (! $enabled) {
+            $this->verify = false;
+            return $this;
+        }
+
+        if (is_string($caPath)) {
+            $trimmed = trim($caPath);
+            if ($trimmed !== '') {
+                $this->verify = $trimmed;
+                return $this;
+            }
+        }
+
+        $this->verify = true;
+        return $this;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function buildRuntimeHttpConfig(int $requestTimeout): array
@@ -257,6 +285,7 @@ class OceanEngineClient
             'retry_delay' => $this->retryDelay,
             'retryable_status_codes' => $this->retryableStatusCodes,
             'retryable_business_codes' => $this->retryableBusinessCodes,
+            'verify' => $this->verify,
         ];
     }
 

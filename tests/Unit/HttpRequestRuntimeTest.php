@@ -24,6 +24,7 @@ final class HttpRequestRuntimeTest extends TestCase
     protected function tearDown(): void
     {
         HttpRequest::setRuntimeMode('auto');
+        HttpRequest::setVerify(false);
         parent::tearDown();
     }
 
@@ -62,5 +63,28 @@ final class HttpRequestRuntimeTest extends TestCase
 
         self::assertTrue($forceReuse);
         self::assertFalse($disableReuse);
+    }
+
+    public function testCanSetGlobalTlsVerifyStrategy(): void
+    {
+        HttpRequest::setVerify(true);
+        self::assertTrue(HttpRequest::$verify);
+
+        HttpRequest::setVerify(true, '/etc/ssl/custom-ca.pem');
+        self::assertSame('/etc/ssl/custom-ca.pem', HttpRequest::$verify);
+    }
+
+    public function testNormalizeRuntimeConfigSupportsVerifyOverride(): void
+    {
+        $method = new \ReflectionMethod(HttpRequest::class, 'normalizeRuntimeConfig');
+        $method->setAccessible(true);
+
+        $configWithBoolVerify = $method->invoke(null, ['verify' => true]);
+        $configWithPathVerify = $method->invoke(null, ['verify' => '/etc/ssl/custom-ca.pem']);
+        $configWithInvalidVerify = $method->invoke(null, ['verify' => 123]);
+
+        self::assertTrue($configWithBoolVerify['verify']);
+        self::assertSame('/etc/ssl/custom-ca.pem', $configWithPathVerify['verify']);
+        self::assertFalse($configWithInvalidVerify['verify']);
     }
 }

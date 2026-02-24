@@ -14,6 +14,7 @@ namespace Tests\Unit;
 
 use Api\Account\AccountRel\QianChuanUniPromotionAuthInit;
 use Core\Exception\InvalidParamException;
+use Core\Http\HttpRequest;
 use Core\Profile\ChainProxy;
 use Core\Profile\RpcRequest;
 use OceanEngineSDK\OceanEngineClient;
@@ -145,6 +146,36 @@ final class OceanEngineClientTest extends TestCase
         $this->expectExceptionMessage('请求参数 JSON 编码失败');
 
         $client->execute($request);
+    }
+
+    public function testClientVerifyConfigCanBeOverriddenIndependently(): void
+    {
+        $clientA = new OceanEngineClient('token-a');
+        $clientB = new OceanEngineClient('token-b');
+
+        $clientA->setVerify(true);
+        $clientB->setVerify(true, '/etc/ssl/custom-ca.pem');
+
+        self::assertTrue($this->readPrivateProperty($clientA, 'verify'));
+        self::assertSame('/etc/ssl/custom-ca.pem', $this->readPrivateProperty($clientB, 'verify'));
+    }
+
+    public function testClientUsesHttpRequestDefaultVerifyValue(): void
+    {
+        $originalVerify = HttpRequest::$verify;
+
+        try {
+            HttpRequest::setVerify(true);
+            $client = new OceanEngineClient('token');
+
+            self::assertTrue($this->readPrivateProperty($client, 'verify'));
+        } finally {
+            if (is_string($originalVerify)) {
+                HttpRequest::setVerify(true, $originalVerify);
+            } else {
+                HttpRequest::setVerify($originalVerify);
+            }
+        }
     }
 
     /**
