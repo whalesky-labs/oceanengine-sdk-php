@@ -13,7 +13,9 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use Api\Account\AccountRel\QianChuanUniPromotionAuthInit;
+use Core\Exception\InvalidParamException;
 use Core\Profile\ChainProxy;
+use Core\Profile\RpcRequest;
 use OceanEngineSDK\OceanEngineClient;
 use PHPUnit\Framework\TestCase;
 
@@ -125,6 +127,24 @@ final class OceanEngineClientTest extends TestCase
 
         self::assertFalse($this->readPrivateProperty($clientA, 'retryEnabled'));
         self::assertTrue($this->readPrivateProperty($clientB, 'retryEnabled'));
+    }
+
+    public function testExecuteThrowsInvalidParamExceptionWhenJsonEncodeFails(): void
+    {
+        $client = new OceanEngineClient('token');
+        $request = new class($client) extends RpcRequest {
+            protected string $url = 'http://127.0.0.1:65535/test';
+
+            protected string $method = 'POST';
+
+            protected string $content_type = 'application/json';
+        };
+        $request->addParam('invalid_utf8', "\xB1\x31");
+
+        $this->expectException(InvalidParamException::class);
+        $this->expectExceptionMessage('请求参数 JSON 编码失败');
+
+        $client->execute($request);
     }
 
     /**

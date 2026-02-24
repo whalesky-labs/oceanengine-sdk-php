@@ -28,7 +28,7 @@ class OceanEngineException extends \Exception
      */
     public function __construct(string $errorMessage, int $errorCode = 500)
     {
-        parent::__construct($errorMessage);
+        parent::__construct($errorMessage, $errorCode);
         $this->errorMessage = $errorMessage;
         $this->errorCode = $errorCode;
         $this->setErrorType('OceanEngine');
@@ -53,6 +53,7 @@ class OceanEngineException extends \Exception
     public function setErrorCode(int $errorCode): void
     {
         $this->errorCode = $errorCode;
+        $this->code = $errorCode;
     }
 
     /**
@@ -74,6 +75,7 @@ class OceanEngineException extends \Exception
     public function setErrorMessage(string $errorMessage): void
     {
         $this->errorMessage = $errorMessage;
+        $this->message = $errorMessage;
     }
 
     /**

@@ -142,7 +142,11 @@ class OceanEngineClient
         }
 
         if (str_contains($request->getContentType(), 'json')) {
-            $params = json_encode($params);
+            $encodedParams = json_encode($params);
+            if ($encodedParams === false) {
+                throw new InvalidParamException('请求参数 JSON 编码失败: ' . json_last_error_msg(), 400);
+            }
+            $params = $encodedParams;
         }
 
         return HttpRequest::curl(
