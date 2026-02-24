@@ -52,12 +52,21 @@ $client->setRetryConfig(
 );
 
 $client->setRetryEnabled(true);
+
+// TLS 证书校验（默认 false）
+$client->setVerify(false);                          // 关闭校验
+$client->setVerify(true);                           // 启用系统 CA 校验
+$client->setVerify(true, '/etc/ssl/custom-ca.pem'); // 启用并指定 CA 文件
 ```
 
 说明：
 
 - 重试与超时配置作用于**当前 `OceanEngineClient` 实例**。
 - 多实例并发（多账号/多租户）场景下配置互不影响。
+- `setVerify(bool $enabled, ?string $caPath = null)` 作用于当前实例：
+  - `enabled=false`：关闭证书校验
+  - `enabled=true` 且 `caPath` 为空：使用系统 CA 校验
+  - `enabled=true` 且 `caPath` 非空：使用指定 CA 文件校验
 
 ## 四、生产配置建议
 

@@ -58,6 +58,9 @@ $client->setRetryConfig(
     enableRetry: true
 );
 
+// 配置 TLS 证书校验（默认 false）
+$client->setVerify(true);
+
 // 调用 API
 try {
     $response = $client->Account()
@@ -208,6 +211,28 @@ $client->setRetryEnabled(false);  // 禁用重试
 ```
 
 说明：重试与超时配置只作用于当前 `OceanEngineClient` 实例，多实例并发互不影响。
+
+#### 配置 TLS 证书校验
+
+| 方法参数 | 说明 | 示例 |
+| -------- | ---- | ---- |
+| `enabled` | 是否启用证书校验 | `true` / `false` |
+| `caPath` | CA 证书路径（仅 `enabled=true` 时生效） | `/etc/ssl/custom-ca.pem` |
+
+```php
+<?php
+
+$client = new OceanEngineClient(TOKEN);
+
+$client->setVerify(false);                          // 默认行为：关闭证书校验
+$client->setVerify(true);                           // 启用系统 CA 校验
+$client->setVerify(true, '/etc/ssl/custom-ca.pem'); // 启用并指定 CA 文件
+```
+
+说明：
+
+- 当前默认值为 `false`（兼容历史行为）。
+- 生产环境建议启用证书校验，避免中间人攻击风险。
 
 #### 获取广告主信息
 
