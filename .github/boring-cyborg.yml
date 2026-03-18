@@ -1,0 +1,60 @@
+labelPRBasedOnFilePath:
+  Account:
+    - src/Api/Account/**/*
+    - tests/Integration/Account/**/*
+  DataReports:
+    - src/Api/DataReports/**/*
+    - tests/Integration/DataReports/**/*
+  EnterpriseAccount:
+    - src/Api/EnterpriseAccount/**/*
+    - tests/Integration/EnterpriseAccount/**/*
+  JuLiangAds:
+    - src/Api/JuLiangAds/**/*
+    - tests/Integration/JuLiangAds/**/*
+  JuLiangLocalPush:
+    - src/Api/JuLiangLocalPush/**/*
+    - tests/Integration/JuLiangLocalPush/**/*
+  JuLiangQianChuan:
+    - src/Api/JuLiangQianChuan/**/*
+    - tests/Integration/JuLiangQianChuan/**/*
+  JuLiangStarMap:
+    - src/Api/JuLiangStarMap/**/*
+    - tests/Integration/JuLiangStarMap/**/*
+  Materials:
+    - src/Api/Materials/**/*
+    - tests/Integration/Materials/**/*
+  Tools:
+    - src/Api/Tools/**/*
+    - tests/Integration/Tools/**/*
+  Core:
+    - src/Core/**/*
+  Oauth:
+    - src/Oauth/**/*
+    - tests/Integration/Oauth/**/*
+  Tests:
+    - tests/**/*
+    - phpunit.xml.dist
+    - TEST_MIGRATION.md
+  Documentation:
+    - README.md
+    - CONFIG_GUIDE.md
+    - ERROR_CODES_GUIDE.md
+    - HTTP_MIGRATION.md
+    - docs/**/*
+  Composer:
+    - composer.json
+    - composer.lock
+  GitHub:
+    - .github/**/*
+
+firstPRWelcomeComment: >
+  Thanks for opening this pull request! Please make sure the related tests and docs are updated when needed.
+  感谢你提交 PR！如果改动涉及行为变化，请同步更新测试和相关文档。
+
+firstPRMergeComment: >
+  Awesome work, congrats on your first merged pull request!
+  恭喜你的第一个拉取请求被合并！
+
+firstIssueWelcomeComment: >
+  Thanks for opening your first issue here! Please follow the issue template and provide enough context to help us reproduce the problem.
+  感谢你提交第一个 issue！请尽量按照模板补充环境信息、复现步骤和报错内容。
