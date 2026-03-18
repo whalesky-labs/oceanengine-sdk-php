@@ -118,7 +118,9 @@ class RpcRequest implements RequestInterface
     public function addParam(string $key, mixed $value): static
     {
         $this->params[$key] = $value;
-        $this->{$key} = $value;
+        if (property_exists($this, $key)) {
+            $this->{$key} = $value;
+        }
         return $this;
     }
 

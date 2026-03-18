@@ -24,6 +24,23 @@ use Core\Profile\RequestInterface;
  */
 class OceanEngineClient
 {
+    /**
+     * 默认支持的顶层模块映射。
+     *
+     * @var array<string, string>
+     */
+    private const DEFAULT_MODULE_MAP = [
+        'Account' => 'Api\\Account',
+        'DataReports' => 'Api\\DataReports',
+        'EnterpriseAccount' => 'Api\\EnterpriseAccount',
+        'JuLiangAds' => 'Api\\JuLiangAds',
+        'JuLiangLocalPush' => 'Api\\JuLiangLocalPush',
+        'JuLiangQianChuan' => 'Api\\JuLiangQianChuan',
+        'JuLiangStarMap' => 'Api\\JuLiangStarMap',
+        'Materials' => 'Api\\Materials',
+        'Tools' => 'Api\\Tools',
+    ];
+
     private string $accessToken;
 
     private string $serverUrl;
@@ -299,7 +316,7 @@ class OceanEngineClient
         }
 
         $apiDir = dirname(__DIR__, 2) . '/Api';
-        $moduleMap = [];
+        $moduleMap = self::DEFAULT_MODULE_MAP;
 
         $items = scandir($apiDir);
         if ($items === false) {
