@@ -16,3 +16,6 @@ vendor/
 
 # 本地测试配置文件
 # tests/config/config.php  # 已迁移到.env文件
+
+# 本地设计文档
+docs/superpowers/
