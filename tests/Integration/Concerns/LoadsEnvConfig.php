@@ -70,6 +70,16 @@ trait LoadsEnvConfig
     }
 
     /**
+     * 读取视频上传测试文件路径。
+     */
+    private function resolveVideoFilePath(): string
+    {
+        $dotenv = $this->loadDotEnvValues();
+
+        return $this->firstAvailableEnvValue(['VIDEO_FILE_PATH'], $dotenv);
+    }
+
+    /**
      * 从运行时环境变量或 .env 中按顺序取值。
      *
      * @param array<string> $keys

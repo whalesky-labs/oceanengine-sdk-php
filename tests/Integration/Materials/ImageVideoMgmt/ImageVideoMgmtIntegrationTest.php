@@ -24,6 +24,8 @@ final class ImageVideoMgmtIntegrationTest extends TestCase
 {
     use LoadsEnvConfig;
 
+    private const DEFAULT_VIDEO_FILE_PATH = '/Volumes/HX-Sync/资源库/成片库/4.15-屈敏洁-纤维饮-1（口播）.mp4';
+
     /**
      * @dataProvider imageVideoRequestProvider
      *
@@ -75,5 +77,40 @@ final class ImageVideoMgmtIntegrationTest extends TestCase
                     ]),
             ],
         ];
+    }
+
+    public function testUploadVideoMaterial(): void
+    {
+        [$token, $advertiserId] = $this->resolveTokenAndAdvertiserId();
+        $videoFilePath = $this->resolveVideoFilePath();
+        if ($videoFilePath === '') {
+            $videoFilePath = self::DEFAULT_VIDEO_FILE_PATH;
+        }
+
+        if ($token === '' || $advertiserId === '') {
+            self::markTestSkipped('Set TOKEN and ADVERTISER_ID (or ADVERTISER_IDS) in .env.');
+        }
+
+        if (! is_file($videoFilePath)) {
+            self::markTestSkipped(sprintf('Video file not found: %s', $videoFilePath));
+        }
+
+        $payload = $this->runWithNetworkGuard(function () use ($token, $advertiserId, $videoFilePath): array {
+            $client = new OceanEngineClient($token);
+            $response = $client->Materials()
+                ->ImageVideoMgmt
+                ->FileVideoAd()
+                ->setParams([
+                    'advertiser_id' => (int) $advertiserId,
+                    'upload_type' => 'UPLOAD_BY_FILE',
+                    'video_file' => '@' . $videoFilePath,
+                    'video_signature' => md5_file($videoFilePath),
+                ])
+                ->send();
+
+            return $this->assertIntegrationHttpResponse($response, '上传视频素材');
+        });
+
+        self::assertArrayHasKey('code', $payload);
     }
 }

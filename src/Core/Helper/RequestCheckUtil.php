@@ -148,8 +148,89 @@ class RequestCheckUtil
     public static function checkFileExist(string $filePath, string $fieldName): void
     {
         if (! file_exists($filePath)) {
-            throw new InvalidParamException('client-check-error:Invalid Arguments: the file of "' . $fieldName . '" does not exist: ' . realpath($filePath));
+            throw new InvalidParamException('client-check-error:Invalid Arguments: the file of "' . $fieldName . '" does not exist: ' . $filePath, 41);
         }
+    }
+
+    /**
+     * 检查文件参数是否为 SDK 支持的上传格式，并校验其可读性。
+     *
+     * 支持以下两种格式：
+     * 1. '@/path/to/file'
+     * 2. new \CURLFile('/path/to/file')
+     *
+     * @param mixed $value 文件参数值
+     * @param string $fieldName 参数名
+     * @throws InvalidParamException
+     */
+    public static function checkUploadFile(mixed $value, string $fieldName): void
+    {
+        $filePath = self::extractUploadFilePath($value, $fieldName);
+        self::checkFileExist($filePath, $fieldName);
+
+        if (! is_readable($filePath)) {
+            throw new InvalidParamException(
+                'client-check-error:Invalid Arguments: the file of "' . $fieldName . '" is not readable: ' . $filePath,
+                41
+            );
+        }
+    }
+
+    /**
+     * 检查字段值是否为合法 MD5。
+     *
+     * @param mixed $value 参数值
+     * @param string $fieldName 参数名
+     * @throws InvalidParamException
+     */
+    public static function checkMd5(mixed $value, string $fieldName): void
+    {
+        if (self::checkEmpty($value)) {
+            return;
+        }
+
+        if (! is_string($value) || ! preg_match('/^[a-fA-F0-9]{32}$/', $value)) {
+            throw new InvalidParamException(
+                'client-check-error:Invalid Arguments: the value of ' . $fieldName . ' is not a valid md5 string.',
+                41
+            );
+        }
+    }
+
+    /**
+     * @param mixed $value
+     * @throws InvalidParamException
+     */
+    public static function extractUploadFilePath(mixed $value, string $fieldName): string
+    {
+        if ($value instanceof \CURLFile) {
+            $filename = $value->getFilename();
+            if ($filename === '') {
+                throw new InvalidParamException(
+                    'client-check-error:Invalid Arguments: the file of "' . $fieldName . '" must provide a filename.',
+                    41
+                );
+            }
+
+            return $filename;
+        }
+
+        if (is_string($value) && str_starts_with($value, '@')) {
+            $path = substr($value, 1);
+            if ($path === '') {
+                throw new InvalidParamException(
+                    'client-check-error:Invalid Arguments: the file of "' . $fieldName . '" can not be empty.',
+                    41
+                );
+            }
+
+            return $path;
+        }
+
+        throw new InvalidParamException(
+            'client-check-error:Invalid Arguments: the file of "' . $fieldName . '" must be "@/path/to/file" or \\CURLFile.',
+            41
+        );
     }
 
     /**
