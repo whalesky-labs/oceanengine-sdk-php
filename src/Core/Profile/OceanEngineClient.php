@@ -12,22 +12,35 @@ declare(strict_types=1);
 
 namespace OceanEngineSDK;
 
-use Api\Account\Module as AccountModule;
-use Api\DataReports\Module as DataReportsModule;
-use Api\JuLiangAds\Module as JuLiangAdsModule;
-use Api\JuLiangLocalPush\Module as JuLiangLocalPushModule;
-use Api\JuLiangQianChuan\Module as JuLiangQianChuanModule;
-use Api\JuLiangStarMap\Module as JuLiangStarMapModule;
-use Api\Materials\Module as MaterialsModule;
-use Api\Tools\Module as ToolsModule;
 use Core\Exception\InvalidParamException;
 use Core\Exception\OceanEngineException;
 use Core\Http\HttpRequest;
 use Core\Http\HttpResponse;
+use Core\Profile\ChainProxy;
 use Core\Profile\RequestInterface;
 
+/**
+ * SDK client.
+ */
 class OceanEngineClient
 {
+    /**
+     * 默认支持的顶层模块映射。
+     *
+     * @var array<string, string>
+     */
+    private const DEFAULT_MODULE_MAP = [
+        'Account' => 'Api\\Account',
+        'DataReports' => 'Api\\DataReports',
+        'EnterpriseAccount' => 'Api\\EnterpriseAccount',
+        'JuLiangAds' => 'Api\\JuLiangAds',
+        'JuLiangLocalPush' => 'Api\\JuLiangLocalPush',
+        'JuLiangQianChuan' => 'Api\\JuLiangQianChuan',
+        'JuLiangStarMap' => 'Api\\JuLiangStarMap',
+        'Materials' => 'Api\\Materials',
+        'Tools' => 'Api\\Tools',
+    ];
+
     private string $accessToken;
 
     private string $serverUrl;
@@ -36,19 +49,34 @@ class OceanEngineClient
 
     private bool $isSandbox;
 
+    private int $connectTimeout;
+
+    private int $defaultReadTimeout;
+
+    private bool $retryEnabled;
+
+    private int $maxRetries;
+
+    private int $retryDelay;
+
     /**
-     * 模块映射，统一调用.
+     * @var array<int, int>
      */
-    private static array $moduleMap = [
-        'Account' => AccountModule::class,
-        'Materials' => MaterialsModule::class,
-        'DataReports' => DataReportsModule::class,
-        'Tools' => ToolsModule::class,
-        'JuLiangAds' => JuLiangAdsModule::class,
-        'JuLiangQianChuan' => JuLiangQianChuanModule::class,
-        'JuLiangStarMap' => JuLiangStarMapModule::class,
-        'JuLiangLocalPush' => JuLiangLocalPushModule::class,
-    ];
+    private array $retryableStatusCodes;
+
+    /**
+     * @var array<int, int>
+     */
+    private array $retryableBusinessCodes;
+
+    private bool|string $verify;
+
+    /**
+     * 顶层模块映射缓存（模块名 => 命名空间）.
+     *
+     * @var null|array<string, string>
+     */
+    private static ?array $moduleMap = null;
 
     /**
      * 构造函数，支持直接实例化.
@@ -63,26 +91,43 @@ class OceanEngineClient
         $this->isSandbox = $isSandbox;
         $this->serverUrl = $serverUrl ?? 'https://api.oceanengine.com/open_api';
         $this->boxUrl = $boxUrl ?? 'https://api.oceanengine.com/open_api';
+        $this->connectTimeout = HttpRequest::$connectTimeout;
+        $this->defaultReadTimeout = HttpRequest::$readTimeout;
+        $this->retryEnabled = HttpRequest::$enableRetry;
+        $this->maxRetries = HttpRequest::$maxRetries;
+        $this->retryDelay = HttpRequest::$retryDelay;
+        $this->retryableStatusCodes = HttpRequest::$retryableStatusCodes;
+        $this->retryableBusinessCodes = HttpRequest::$retryableBusinessCodes;
+        $this->verify = HttpRequest::$verify;
     }
 
     /**
      * 魔术方法，动态调用模块，返回模块实例.
      *
+     * @param string $name 模块方法名
+     * @param array<int, mixed> $arguments 传入参数（保留）
+     * @return mixed
      * @throws \BadMethodCallException
      */
-    public function __call(string $name, array $arguments)
+    public function __call(string $name, array $arguments): mixed
     {
-        if (! isset(self::$moduleMap[$name])) {
+        $moduleMap = self::getModuleMap();
+
+        if (! isset($moduleMap[$name])) {
             throw new \BadMethodCallException("未定义的方法 '{$name}'。");
         }
-        $className = self::$moduleMap[$name];
-        return new $className($this);
+
+        return new ChainProxy($this, $moduleMap[$name]);
     }
 
     /**
      * 静态魔术方法，禁止调用（建议使用实例化调用模块）.
+     *
+     * @param string $name 模块方法名
+     * @param array<int, mixed> $arguments 传入参数（保留）
+     * @return mixed
      */
-    public static function __callStatic(string $name, array $arguments)
+    public static function __callStatic(string $name, array $arguments): mixed
     {
         throw new \BadMethodCallException("请先实例化客户端再调用模块，例如：\$client = new OceanEngineClient(TOKEN); \$client->{$name}();");
     }
@@ -117,28 +162,83 @@ class OceanEngineClient
         }
 
         if (str_contains($request->getContentType(), 'json')) {
-            $params = json_encode($params);
+            $encodedParams = json_encode($params);
+            if ($encodedParams === false) {
+                throw new InvalidParamException('请求参数 JSON 编码失败: ' . json_last_error_msg(), 400);
+            }
+            $params = $encodedParams;
         }
 
-        HttpRequest::$readTimeout = $request->getTimeout();
-
-        return HttpRequest::curl($url, $request->getMethod(), $params, $headers);
+        return HttpRequest::curl(
+            $url,
+            $request->getMethod(),
+            $params,
+            $headers,
+            $this->buildRuntimeHttpConfig($request->getTimeout())
+        );
     }
 
     /**
      * 备用调用模块接口方法（非静态）.
      */
-    public function module(string $name)
+    public function module(string $name): ChainProxy
     {
-        if (! isset(self::$moduleMap[$name])) {
+        $moduleMap = self::getModuleMap();
+
+        if (! isset($moduleMap[$name])) {
             throw new \InvalidArgumentException("模块 {$name} 不存在。");
         }
-        $className = self::$moduleMap[$name];
-        return new $className($this);
+
+        return new ChainProxy($this, $moduleMap[$name]);
+    }
+
+    public function Account(): ChainProxy
+    {
+        return $this->module('Account');
+    }
+
+    public function DataReports(): ChainProxy
+    {
+        return $this->module('DataReports');
+    }
+
+    public function EnterpriseAccount(): ChainProxy
+    {
+        return $this->module('EnterpriseAccount');
+    }
+
+    public function JuLiangAds(): ChainProxy
+    {
+        return $this->module('JuLiangAds');
+    }
+
+    public function JuLiangLocalPush(): ChainProxy
+    {
+        return $this->module('JuLiangLocalPush');
+    }
+
+    public function JuLiangQianChuan(): ChainProxy
+    {
+        return $this->module('JuLiangQianChuan');
+    }
+
+    public function JuLiangStarMap(): ChainProxy
+    {
+        return $this->module('JuLiangStarMap');
+    }
+
+    public function Materials(): ChainProxy
+    {
+        return $this->module('Materials');
+    }
+
+    public function Tools(): ChainProxy
+    {
+        return $this->module('Tools');
     }
 
     /**
-     * 配置重试机制.
+     * 配置当前客户端实例的重试机制.
      */
     public function setRetryConfig(
         int $maxRetries = 3,
@@ -147,22 +247,104 @@ class OceanEngineClient
         bool $enableRetry = true,
         array $retryableBusinessCodes = [40100, 40110, 50000]
     ): self {
-        HttpRequest::setRetryConfig(
-            $maxRetries,
-            $retryDelay,
-            $retryableStatusCodes,
-            $enableRetry,
-            $retryableBusinessCodes
-        );
+        $this->maxRetries = $maxRetries;
+        $this->retryDelay = $retryDelay;
+        $this->retryEnabled = $enableRetry;
+        $this->retryableStatusCodes = $retryableStatusCodes;
+        $this->retryableBusinessCodes = $retryableBusinessCodes;
         return $this;
     }
 
     /**
-     * 设置重试开关.
+     * 设置当前客户端实例的重试开关.
      */
     public function setRetryEnabled(bool $enabled): self
     {
-        HttpRequest::setRetryEnabled($enabled);
+        $this->retryEnabled = $enabled;
         return $this;
+    }
+
+    /**
+     * 设置当前客户端实例 TLS 证书校验策略。
+     *
+     * @param bool $enabled 是否启用证书校验
+     * @param null|string $caPath CA 证书文件路径（仅在 enabled=true 时生效）
+     */
+    public function setVerify(bool $enabled, ?string $caPath = null): self
+    {
+        if (! $enabled) {
+            $this->verify = false;
+            return $this;
+        }
+
+        if (is_string($caPath)) {
+            $trimmed = trim($caPath);
+            if ($trimmed !== '') {
+                $this->verify = $trimmed;
+                return $this;
+            }
+        }
+
+        $this->verify = true;
+        return $this;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildRuntimeHttpConfig(int $requestTimeout): array
+    {
+        return [
+            'connect_timeout' => $this->connectTimeout,
+            'read_timeout' => $requestTimeout > 0 ? $requestTimeout : $this->defaultReadTimeout,
+            'enable_retry' => $this->retryEnabled,
+            'max_retries' => $this->maxRetries,
+            'retry_delay' => $this->retryDelay,
+            'retryable_status_codes' => $this->retryableStatusCodes,
+            'retryable_business_codes' => $this->retryableBusinessCodes,
+            'verify' => $this->verify,
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function getModuleMap(): array
+    {
+        if (self::$moduleMap !== null) {
+            return self::$moduleMap;
+        }
+
+        $apiDir = dirname(__DIR__, 2) . '/Api';
+        $moduleMap = self::DEFAULT_MODULE_MAP;
+
+        $items = scandir($apiDir);
+        if ($items === false) {
+            self::$moduleMap = $moduleMap;
+            return $moduleMap;
+        }
+
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') {
+                continue;
+            }
+
+            $moduleDir = $apiDir . '/' . $item;
+            if (! is_dir($moduleDir)) {
+                continue;
+            }
+
+            // 限制为合法模块名，避免特殊目录污染模块入口。
+            if (! preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $item)) {
+                continue;
+            }
+
+            $moduleMap[$item] = 'Api\\' . $item;
+        }
+
+        ksort($moduleMap);
+        self::$moduleMap = $moduleMap;
+
+        return $moduleMap;
     }
 }

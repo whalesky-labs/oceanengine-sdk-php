@@ -1,6 +1,7 @@
 # DataReports 数据报表 API 结构
 
 > 该接口千川&广告&本地推&星图通用。
+> 调用格式：`$client->DataReports()->{子模块}->{方法}()`
 
 ## AdsProDataReports 广告升级版数据报表
 

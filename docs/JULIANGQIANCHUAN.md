@@ -1,5 +1,7 @@
 # JuLiangQianChuan 巨量千川 API 结构
 
+> 调用格式：`$client->JuLiangQianChuan()->{子模块}[->{子模块}]->{方法}()`
+
 ## AdvertiserMgmt 千川 PC 标准推广 （原：投放管理）
 
 ### AccountBudget 广告账户预算

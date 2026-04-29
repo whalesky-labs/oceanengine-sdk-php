@@ -10,7 +10,7 @@ declare(strict_types=1);
  * @license  https://github.com/westng/oceanengine-sdk-php/blob/main/LICENSE
  */
 
-namespace Account\AccountRel;
+namespace Api\Account\AccountRel;
 
 use Core\Profile\RpcRequest;
 
@@ -32,4 +32,9 @@ class QianChuanUniPromotionAuthInit extends RpcRequest
      * 操作的广告主id.
      */
     protected int $advertiser_id;
+}
+
+// 兼容历史命名空间：Account\AccountRel\QianChuanUniPromotionAuthInit
+if (! class_exists('Account\AccountRel\QianChuanUniPromotionAuthInit', false)) {
+    class_alias(__NAMESPACE__ . '\QianChuanUniPromotionAuthInit', 'Account\AccountRel\QianChuanUniPromotionAuthInit');
 }

@@ -18,6 +18,11 @@ class BaseModule
 {
     protected OceanEngineClient $client;
 
+    /**
+     * 注入 SDK 客户端实例。
+     *
+     * @param OceanEngineClient $client SDK 客户端实例
+     */
     public function __construct(OceanEngineClient $client)
     {
         $this->client = $client;

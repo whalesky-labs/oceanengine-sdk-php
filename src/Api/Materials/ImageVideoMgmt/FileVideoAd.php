@@ -12,6 +12,8 @@ declare(strict_types=1);
 
 namespace Api\Materials\ImageVideoMgmt;
 
+use Core\Exception\InvalidParamException;
+use Core\Helper\RequestCheckUtil;
 use Core\Profile\RpcRequest;
 
 /**
@@ -35,4 +37,31 @@ class FileVideoAd extends RpcRequest
      * 广告主ID.
      */
     protected int $advertiser_id;
+
+    /**
+     * @throws InvalidParamException
+     */
+    public function check(): void
+    {
+        RequestCheckUtil::checkNotNull($this->params['advertiser_id'] ?? null, 'advertiser_id');
+
+        $uploadType = (string) ($this->params['upload_type'] ?? 'UPLOAD_BY_FILE');
+        $this->params['upload_type'] = $uploadType;
+
+        RequestCheckUtil::checkAllowField($uploadType, ['UPLOAD_BY_FILE', 'UPLOAD_BY_URL'], 'upload_type');
+
+        if ($uploadType === 'UPLOAD_BY_FILE') {
+            RequestCheckUtil::checkNotNull($this->params['video_file'] ?? null, 'video_file');
+            RequestCheckUtil::checkNotNull($this->params['video_signature'] ?? null, 'video_signature');
+            RequestCheckUtil::checkUploadFile($this->params['video_file'], 'video_file');
+            RequestCheckUtil::checkMd5($this->params['video_signature'], 'video_signature');
+            return;
+        }
+
+        RequestCheckUtil::checkNotNull($this->params['video_url'] ?? null, 'video_url');
+
+        if (isset($this->params['filename'])) {
+            RequestCheckUtil::checkMaxLength((string) $this->params['filename'], 255, 'filename');
+        }
+    }
 }

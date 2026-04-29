@@ -20,6 +20,7 @@
 
 - 🎯 **完整覆盖**：支持巨量广告、千川、本地推、星图等全平台 API
 - ⚡ **高性能**：基于 GuzzleHttp，支持连接复用和智能重试
+- 🧠 **运行时自适配**：自动识别 FPM/CLI/Swoole 运行环境并调整连接复用策略
 - 🔧 **易配置**：支持环境变量、配置文件等多种配置方式
 - 🛡️ **强健性**：内置错误处理、重试机制、频控处理
 - 📚 **文档完善**：详细的使用文档和示例代码
@@ -57,9 +58,12 @@ $client->setRetryConfig(
     enableRetry: true
 );
 
+// 可选：显式配置 TLS 证书校验（默认已开启）
+$client->setVerify(true);
+
 // 调用 API
 try {
-    $response = $client->module('Account')
+    $response = $client->Account()
         ->AccountInfo
         ->AdvertiserInfo()
         ->setParams(['account_ids' => ['123456789']])
@@ -73,6 +77,13 @@ try {
 ```
 
 ## 📋 使用条件
+
+### 运行环境自适配
+
+- 默认 `auto`：自动识别 `fpm`/`cli`/`swoole`
+- 在 Swoole 协程环境下默认关闭全局 Client 池复用，降低跨协程共享风险
+- 可通过 `Core\Http\HttpRequest::setRuntimeMode('fpm|cli|swoole|auto')` 手动覆盖
+- 也可通过环境变量 `OCEANENGINE_RUNTIME_MODE` 指定运行模式
 
 ### 开发者条件
 
@@ -199,6 +210,59 @@ $client->setRetryEnabled(true);   // 启用重试
 $client->setRetryEnabled(false);  // 禁用重试
 ```
 
+说明：重试与超时配置只作用于当前 `OceanEngineClient` 实例，多实例并发互不影响。
+
+#### 配置 TLS 证书校验
+
+| 方法参数 | 说明 | 示例 |
+| -------- | ---- | ---- |
+| `enabled` | 是否启用证书校验 | `true` / `false` |
+| `caPath` | CA 证书路径（仅 `enabled=true` 时生效） | `/etc/ssl/custom-ca.pem` |
+
+#### 文件上传请求
+
+对于素材、资质、券码等文件上传接口，不要使用 `application/json` 传本地文件。SDK 支持以下两种文件参数写法，并会自动按 `multipart/form-data` 发送：
+
+```php
+<?php
+
+$videoPath = '/absolute/path/to/video.mp4';
+
+$response = $client->Materials()
+    ->ImageVideoMgmt
+    ->FileVideoAd()
+    ->setParams([
+        'advertiser_id' => 123456789,
+        'upload_type' => 'UPLOAD_BY_FILE',
+        'video_file' => '@' . $videoPath,
+        'video_signature' => md5_file($videoPath),
+    ])
+    ->send();
+```
+
+也支持：
+
+```php
+'video_file' => new \CURLFile($videoPath, 'video/mp4', basename($videoPath))
+```
+
+其中 `FileVideoAd` 在 `UPLOAD_BY_FILE` 模式下必须传 `video_file` 和 `video_signature`；在 `UPLOAD_BY_URL` 模式下必须传 `video_url`。
+
+```php
+<?php
+
+$client = new OceanEngineClient(TOKEN);
+
+$client->setVerify(false);                          // 显式关闭证书校验（不推荐，仅兼容历史环境）
+$client->setVerify(true);                           // 默认行为：启用系统 CA 校验
+$client->setVerify(true, '/etc/ssl/custom-ca.pem'); // 启用并指定 CA 文件
+```
+
+说明：
+
+- 当前默认值为 `true`，默认使用系统 CA 进行证书校验。
+- 仅在明确需要兼容历史环境时再关闭证书校验，避免中间人攻击风险。
+
 #### 获取广告主信息
 
 ```php
@@ -210,7 +274,7 @@ use OceanEngineSDK\OceanEngineClient;
 try {
     $client = new OceanEngineClient(TOKEN);
 
-    $response = $client->module('Account')
+    $response = $client->Account()
         ->AccountInfo
         ->AdvertiserInfo()
         ->setParams([
@@ -265,7 +329,7 @@ SDK 提供了完善的错误处理机制：
 
 ```php
 try {
-    $response = $client->module('Account')->AccountInfo->AdvertiserInfo()
+    $response = $client->Account()->AccountInfo->AdvertiserInfo()
         ->setParams($args)
         ->send();
 } catch (OceanEngineException $e) {
@@ -281,17 +345,17 @@ try {
 
 ## 📊 开发进度
 
-| **模块**   | **调用方式**                           | **状态**  | **文档**                             |
-| ---------- | -------------------------------------- | --------- | ------------------------------------ |
-| 账户管理   | `$client->module('Account')`           | ✅ 已完成 | [查看文档](docs/ACCOUNT.md)          |
-| 素材管理   | `$client->module('Materials')`         | ✅ 已完成 | [查看文档](docs/MATERIALS.md)        |
-| 数据报表   | `$client->module('DataReports')`       | ✅ 已完成 | [查看文档](docs/DATAREPORTS.md)      |
-| 工具       | `$client->module('Tools')`             | ✅ 已完成 | [查看文档](docs/TOOLS.md)            |
-| 巨量广告   | `$client->module('JuLiangAds')`        | ✅ 已完成 | [查看文档](docs/JULIANGADS.md)       |
-| 巨量千川   | `$client->module('JuLiangQianChuan')`  | ✅ 已完成 | [查看文档](docs/JULIANGQIANCHUAN.md) |
-| 巨量星图   | `$client->module('JuLiangStarMap')`    | ✅ 已完成 | [查看文档](docs/JULIANGSTARMAP.md)   |
-| 巨量本地推 | `$client->module('JuLiangLocalPush')`  | ✅ 已完成 | [查看文档](docs/JULIANGLOCALPUSH.md) |
-| 企业号     | `$client->module('EnterpriseAccount')` | ⏳ 未开始 | -                                    |
+| **模块**   | **链式调用**                     | **状态**  | **文档**                             |
+| ---------- | -------------------------------- | --------- | ------------------------------------ |
+| 账户管理   | `$client->Account()`             | ✅ 已完成 | [查看文档](docs/ACCOUNT.md)          |
+| 素材管理   | `$client->Materials()`           | ✅ 已完成 | [查看文档](docs/MATERIALS.md)        |
+| 数据报表   | `$client->DataReports()`         | ✅ 已完成 | [查看文档](docs/DATAREPORTS.md)      |
+| 工具       | `$client->Tools()`               | ✅ 已完成 | [查看文档](docs/TOOLS.md)            |
+| 巨量广告   | `$client->JuLiangAds()`          | ✅ 已完成 | [查看文档](docs/JULIANGADS.md)       |
+| 巨量千川   | `$client->JuLiangQianChuan()`    | ✅ 已完成 | [查看文档](docs/JULIANGQIANCHUAN.md) |
+| 巨量星图   | `$client->JuLiangStarMap()`      | ✅ 已完成 | [查看文档](docs/JULIANGSTARMAP.md)   |
+| 巨量本地推 | `$client->JuLiangLocalPush()`    | ✅ 已完成 | [查看文档](docs/JULIANGLOCALPUSH.md) |
+| 企业号     | `$client->EnterpriseAccount()`   | ⏳ 未开始 | -                                    |
 
 > ⚠️ 上述进度仅供参考，实际以源码为准。  
 > 🧠 欢迎查看源码深入探索，接口比文档更诚实！
@@ -305,13 +369,51 @@ try {
 
 ## 🤝 贡献指南
 
-欢迎提交 Issue 和 Pull Request！
+欢迎提交 Issue 和 Pull Request，建议遵循以下规范。
 
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
+### 1 分支规范
+
+- 基于最新 `4.x` 分支开发。
+- 分支命名建议：`feat/xxx`、`fix/xxx`、`refactor/xxx`、`docs/xxx`。
+
+### 2 提交信息规范（Conventional Commits）
+
+提交格式：
+
+```text
+type(scope): subject
+```
+
+常用 `type`：
+
+- `feat`：新增功能
+- `fix`：缺陷修复
+- `refactor`：重构（不改行为）
+- `docs`：文档更新
+- `test`：测试补充/调整
+- `perf`：性能优化
+- `chore`：工程维护（依赖、脚本、配置等）
+
+示例：
+
+```text
+feat(account): 新增广告主账户查询接口
+fix(http): 修复并发场景下重试配置互相污染
+docs(readme): 补充链式调用与模块说明
+test(integration): 增加 OAuth 刷新 token 用例
+```
+
+### 3 提交前检查
+
+- 本地执行：`composer test`
+- 格式检查：`vendor/bin/php-cs-fixer fix --dry-run --sequential`
+- 若涉及行为变更，请同步更新 `README.md` 或 `docs/*`
+
+### 4 Pull Request 要求
+
+- 标题清晰说明“做了什么、为什么做”
+- 描述中包含影响范围（模块/接口）与验证方式
+- 若是破坏性变更，请明确标注 `BREAKING CHANGE`
 
 ## 📄 开源协议
 
@@ -325,10 +427,6 @@ try {
 
 ---
 
-<div align="center">
-
 **如果这个项目对您有帮助，请给个 ⭐️ 支持一下！**
 
 Made with ❤️ by [westng](https://github.com/westng)
-
-</div>

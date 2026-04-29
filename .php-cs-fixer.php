@@ -1,5 +1,18 @@
 <?php
 
+declare(strict_types=1);
+/**
+ * This file is part of Marketing PHP SDK.
+ *
+ * @link     https://github.com/westng/oceanengine-sdk-php
+ * @document https://github.com/westng/oceanengine-sdk-php
+ * @contact  westng
+ * @license  https://github.com/westng/oceanengine-sdk-php/blob/main/LICENSE
+ */
+use PhpCsFixer\Config;
+use PhpCsFixer\Finder;
+use PhpCsFixer\Runner\Parallel\ParallelConfig;
+
 $header = <<<'EOF'
 This file is part of Marketing PHP SDK.
 
@@ -9,9 +22,9 @@ This file is part of Marketing PHP SDK.
 @license  https://github.com/westng/oceanengine-sdk-php/blob/main/LICENSE
 EOF;
 
-return (new PhpCsFixer\Config())
+return (new Config())
     ->setRiskyAllowed(true)
-    ->setParallelConfig(new PhpCsFixer\Runner\Parallel\ParallelConfig(8, 24))
+    ->setParallelConfig(new ParallelConfig(8, 24))
     ->setRules([
         '@PSR2' => true,
         '@Symfony' => true,
@@ -24,13 +37,13 @@ return (new PhpCsFixer\Config())
             'location' => 'after_declare_strict',
         ],
         'array_syntax' => [
-            'syntax' => 'short'
+            'syntax' => 'short',
         ],
         'list_syntax' => [
-            'syntax' => 'short'
+            'syntax' => 'short',
         ],
         'concat_space' => [
-            'spacing' => 'one'
+            'spacing' => 'one',
         ],
         'blank_line_before_statement' => [
             'statements' => [
@@ -39,7 +52,7 @@ return (new PhpCsFixer\Config())
         ],
         'general_phpdoc_annotation_remove' => [
             'annotations' => [
-                'author'
+                'author',
             ],
         ],
         'ordered_imports' => [
@@ -83,7 +96,7 @@ return (new PhpCsFixer\Config())
         'multiline_comment_opening_closing' => true,
     ])
     ->setFinder(
-        PhpCsFixer\Finder::create()
+        Finder::create()
             ->exclude('vendor')
             ->exclude('bin')
             ->exclude('runtime')

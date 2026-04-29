@@ -19,10 +19,7 @@ use OceanEngineSDK\OceanEngineClient;
 
 class RpcRequest implements RequestInterface
 {
-    /**
-     * @var OceanEngineClient
-     */
-    protected $client;
+    protected ?OceanEngineClient $client = null;
 
     /**
      * request url.
@@ -50,57 +47,92 @@ class RpcRequest implements RequestInterface
     protected string $content_type = 'application/json';
 
     /**
-     * RpcRequest constructor.
-     * @param null $client
+     * 构造通用 RPC 请求对象。
+     *
+     * @param null|OceanEngineClient $client SDK 客户端实例
      */
-    public function __construct($client = null)
+    public function __construct(?OceanEngineClient $client = null)
     {
         $this->client = $client;
     }
 
-    public function setUrl($url): static
+    /**
+     * 设置请求 URL。
+     *
+     * @param string $url 请求 URL
+     * @return static
+     */
+    public function setUrl(string $url): static
     {
         $this->url = $url;
         return $this;
     }
 
+    /**
+     * 获取请求 URL。
+     *
+     * @return string
+     */
     public function getUrl(): string
     {
         return $this->url;
     }
 
+    /**
+     * 获取 HTTP 请求方法。
+     *
+     * @return string
+     */
     public function getMethod(): string
     {
         return $this->method;
     }
 
+    /**
+     * 获取请求超时时间（秒）。
+     *
+     * @return int
+     */
     public function getTimeout(): int
     {
         return $this->timeout;
     }
 
+    /**
+     * 获取请求参数。
+     *
+     * @return array<string, mixed>
+     */
     public function getParams(): array
     {
         return $this->params;
     }
 
-    public function addParam($key, $value): static
+    /**
+     * 添加单个请求参数。
+     *
+     * @param string $key 参数名
+     * @param mixed $value 参数值
+     * @return static
+     */
+    public function addParam(string $key, mixed $value): static
     {
         $this->params[$key] = $value;
-        $this->{$key} = $value;
+        if (property_exists($this, $key)) {
+            $this->{$key} = $value;
+        }
         return $this;
     }
 
     /**
-     * @param mixed $array
+     * 批量设置请求参数。
+     *
+     * @param array<string, mixed> $array
+     * @return static
      * @throws InvalidParamException
      */
-    public function setParams($array): static
+    public function setParams(array $array): static
     {
-        if (! is_array($array)) {
-            throw new InvalidParamException('参数必须是数组类型', 40);
-        }
-
         foreach ($array as $key => $value) {
             if (property_exists($this, $key)) {
                 $this->{$key} = $value;
@@ -110,11 +142,22 @@ class RpcRequest implements RequestInterface
         return $this;
     }
 
+    /**
+     * 获取请求 Content-Type。
+     *
+     * @return string
+     */
     public function getContentType(): string
     {
         return $this->content_type;
     }
 
+    /**
+     * 校验当前请求参数。
+     *
+     * @return void
+     * @throws InvalidParamException
+     */
     public function check(): void
     {
         $reflection = new \ReflectionObject($this);
@@ -133,6 +176,9 @@ class RpcRequest implements RequestInterface
     }
 
     /**
+     * 发送请求并返回 HTTP 响应。
+     *
+     * @return HttpResponse
      * @throws OceanEngineException
      */
     public function send(): HttpResponse

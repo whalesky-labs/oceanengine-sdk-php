@@ -14,21 +14,70 @@ namespace Core\Profile;
 
 interface RequestInterface
 {
-    public function getUrl();
+    /**
+     * 获取请求 URL。
+     *
+     * @return string
+     */
+    public function getUrl(): string;
 
-    public function setUrl($url);
+    /**
+     * 设置请求 URL。
+     *
+     * @param string $url 请求 URL
+     * @return static
+     */
+    public function setUrl(string $url): static;
 
-    public function getMethod();
+    /**
+     * 获取请求方法。
+     *
+     * @return string
+     */
+    public function getMethod(): string;
 
-    public function getTimeout();
+    /**
+     * 获取请求超时时间（秒）。
+     *
+     * @return int
+     */
+    public function getTimeout(): int;
 
-    public function setParams($array);
+    /**
+     * 批量设置请求参数。
+     *
+     * @param array<string, mixed> $array
+     * @return static
+     */
+    public function setParams(array $array): static;
 
-    public function getParams();
+    /**
+     * 获取请求参数。
+     *
+     * @return array<string, mixed>
+     */
+    public function getParams(): array;
 
-    public function addParam($key, $value);
+    /**
+     * 添加单个请求参数。
+     *
+     * @param string $key 参数名
+     * @param mixed $value 参数值
+     * @return static
+     */
+    public function addParam(string $key, mixed $value): static;
 
-    public function getContentType();
+    /**
+     * 获取请求 Content-Type。
+     *
+     * @return string
+     */
+    public function getContentType(): string;
 
-    public function check();
+    /**
+     * 校验请求参数。
+     *
+     * @return void
+     */
+    public function check(): void;
 }

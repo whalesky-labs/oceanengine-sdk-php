@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace OceanEngineSDK;
 
+use Core\Exception\InvalidParamException;
 use Core\Exception\OceanEngineException;
 use Core\Http\HttpRequest;
 use Core\Http\HttpResponse;
@@ -37,6 +38,12 @@ class OceanEngineAuth
 
     /**
      * AuthClient constructor.
+     *
+     * @param string $app_id 应用 ID
+     * @param string $secret 应用密钥
+     * @param bool $is_sandbox 是否沙箱环境
+     * @param null|string $server_url 生产环境地址
+     * @param null|string $box_url 沙箱环境地址
      */
     public function __construct(
         string $app_id,
@@ -113,16 +120,26 @@ class OceanEngineAuth
      * 执行 HTTP 请求.
      *
      * @param RequestInterface $request 请求对象
-     * @param null $url 可选请求地址
+     * @param null|string $url 可选请求地址
      * @return HttpResponse 响应对象
      * @throws OceanEngineException
      */
-    private function execute(RequestInterface $request, $url = null): HttpResponse
+    private function execute(RequestInterface $request, ?string $url = null): HttpResponse
     {
         $params = $request->getParams();
         $headers = ['Content-Type' => $request->getContentType()];
+        $encodedParams = json_encode($params);
+        if ($encodedParams === false) {
+            throw new InvalidParamException('请求参数 JSON 编码失败: ' . json_last_error_msg(), 400);
+        }
 
         $targetUrl = $url ?? ($this->is_sandbox ? $this->box_url : $this->server_url) . $request->getUrl();
-        return HttpRequest::curl($targetUrl, $request->getMethod(), json_encode($params), $headers);
+        return HttpRequest::curl(
+            $targetUrl,
+            $request->getMethod(),
+            $encodedParams,
+            $headers,
+            ['read_timeout' => $request->getTimeout()]
+        );
     }
 }

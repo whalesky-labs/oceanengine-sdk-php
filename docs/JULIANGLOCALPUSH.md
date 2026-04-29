@@ -1,6 +1,7 @@
 # JuLiangLocalPush 巨量本地推 API 结构
 
-> 账号服务、数据报表、素材管理、工具 API请移步单独的MD
+> 账号服务、数据报表、素材管理、工具 API 请移步对应的独立文档。
+> 调用格式：`$client->JuLiangLocalPush()->{子模块}[->{子模块}]->{方法}()`
 
 ## LocalPushAds 本地推投放能力
 

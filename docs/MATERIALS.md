@@ -1,6 +1,7 @@
 # Materials 素材管理 API 结构
 
 > 该接口千川&广告&本地推&星图通用。
+> 调用格式：`$client->Materials()->{子模块}->{方法}()`
 
 ## ImageVideoMgmt 图片与视频管理
 

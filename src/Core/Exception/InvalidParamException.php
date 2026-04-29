@@ -14,7 +14,13 @@ namespace Core\Exception;
 
 class InvalidParamException extends OceanEngineException
 {
-    public function __construct($errorMessage, $errorCode = 500)
+    /**
+     * 构造参数异常对象。
+     *
+     * @param string $errorMessage 参数错误消息
+     * @param int $errorCode 错误码
+     */
+    public function __construct(string $errorMessage, int $errorCode = 500)
     {
         parent::__construct($errorMessage, $errorCode);
     }

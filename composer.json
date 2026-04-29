@@ -1,5 +1,6 @@
 {
   "name": "westng/oceanengine-sdk-php",
+  "version": "4.0.0",
   "description": "巨量引擎开放平台PHP语言SDK",
   "keywords": [
     "巨量引擎",
@@ -37,12 +38,31 @@
       "JuLiangStarMap\\": "src/Api/JuLiangStarMap/"
     }
   },
+  "autoload-dev": {
+    "psr-4": {
+      "Tests\\": "tests/"
+    }
+  },
   "minimum-stability": "dev",
   "prefer-stable": true,
   "scripts": {
-    "cs-fix": "php-cs-fixer fix"
+    "cs-fix": "php-cs-fixer fix",
+    "test:unit": "php -d zend.assertions=1 -d assert.exception=1 vendor/bin/phpunit --testsuite unit",
+    "test:module": "php -d zend.assertions=1 -d assert.exception=1 vendor/bin/phpunit --testsuite module",
+    "test:integration": "php -d zend.assertions=1 -d assert.exception=1 vendor/bin/phpunit --testsuite integration",
+    "test:integration:file": "php -d zend.assertions=1 -d assert.exception=1 vendor/bin/phpunit",
+    "test": [
+      "@test:unit",
+      "@test:module"
+    ],
+    "test:all": [
+      "@test:unit",
+      "@test:module",
+      "@test:integration"
+    ]
   },
   "require-dev": {
-    "friendsofphp/php-cs-fixer": "^3.75"
+    "friendsofphp/php-cs-fixer": "^3.75",
+    "phpunit/phpunit": "^9.6"
   }
 }

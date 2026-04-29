@@ -1,6 +1,7 @@
 # Tools 工具 API 结构
 
 > 该接口千川&广告&本地推&星图通用。
+> 调用格式：`$client->Tools()->{子模块}[->{子模块}]->{方法}()`
 
 ## GlobalPlanningTool 全域计划调控工具
 

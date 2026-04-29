@@ -14,89 +14,102 @@ namespace Core\Autoloader;
 
 class Autoloader
 {
-    private static array $autoloadPathArray = [
-        'Core',      // src/Core 核心包
-        'Api',       // src/Api API接口
-        'AdOauth',   // src/AdOauth Oauth2.0授权
-        'Account',   // src/Account 账号服务
-    ];
-
+    /**
+     * 命名空间到源码路径前缀映射（基于 src 目录）.
+     *
+     * @var array<string, string>
+     */
     private static array $replacePath = [
         'OceanEngineSDK\\' => 'Core\Profile\\',
+        'Core\\' => 'Core\\',
+        'Api\\' => 'Api\\',
+        'Oauth\\' => 'Oauth\\',
+        // 历史别名兼容
+        'AdOauth\\' => 'Oauth\\',
+        'Account\\' => 'Api\Account\\',
+        'DataReports\\' => 'Api\DataReports\\',
+        'Tools\\' => 'Api\Tools\\',
+        'Materials\\' => 'Api\Materials\\',
+        'EnterpriseAccount\\' => 'Api\EnterpriseAccount\\',
+        'JuLiangAds\\' => 'Api\JuLiangAds\\',
+        'JuLiangLocalPush\\' => 'Api\JuLiangLocalPush\\',
+        'JuLiangQianChuan\\' => 'Api\JuLiangQianChuan\\',
+        'JuLiangStarMap\\' => 'Api\JuLiangStarMap\\',
     ];
+
+    /**
+     * @var array<string, string>
+     */
+    private static array $dynamicPathMap = [];
+
+    /**
+     * @var array<string, null|string>
+     */
+    private static array $resolvedFileCache = [];
 
     /**
      * 自动加载类.
      *
-     * @param string $className 类名
+     * @param string $className 类全限定名
+     * @return void
      */
     public static function autoload(string $className): void
     {
-        // 只处理项目自己的类，第三方类交给Composer处理
-        if (! str_starts_with($className, 'Core\\')
-            && ! str_starts_with($className, 'Api\\')
-            && ! str_starts_with($className, 'AdOauth\\')
-            && ! str_starts_with($className, 'Account\\')
-            && ! str_starts_with($className, 'OceanEngineSDK\\')
-            && ! str_starts_with($className, 'Tests\\')) {
-            return; // 不是项目类，让其他自动加载器处理
-        }
-
-        // 获取当前目录
-        $directories = dirname(__DIR__, 2);
-
-        // 替换命名空间映射
-        foreach (self::$replacePath as $namespace => $replacement) {
-            if (str_starts_with($className, $namespace)) {
-                $className = str_replace($namespace, $replacement, $className);
-                break;
+        if (array_key_exists($className, self::$resolvedFileCache)) {
+            $file = self::$resolvedFileCache[$className];
+            if ($file !== null) {
+                include_once $file;
             }
+            return;
         }
 
-        // 确保路径映射正确
-        foreach (self::$autoloadPathArray as $path) {
-            $path = $directories . DIRECTORY_SEPARATOR . $path;
-            if (is_dir($path)) {
-                // 遍历目录及其子目录加载 PHP 文件
-                foreach (glob($path . '/**/*.php') as $file) {
-                    include_once $file;
-                }
-            }
-        }
-
-        // 根据类名获取文件路径
-        $file = $directories . DIRECTORY_SEPARATOR . str_replace('\\', DIRECTORY_SEPARATOR, $className) . '.php';
-
-        // 如果文件存在则加载
-        if (is_file($file)) {
-            include_once $file;
-            return; // 找到并加载文件后退出
-        }
-
-        // 特殊处理Tests命名空间
         if (str_starts_with($className, 'Tests\\')) {
-            // Tests\Config\ConfigManager -> tests/config/ConfigManager.php
-            $relativePath = str_replace('\\', DIRECTORY_SEPARATOR, substr($className, 6));
-            $testFile = dirname($directories) . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . $relativePath . '.php';
-            if (is_file($testFile)) {
-                include_once $testFile;
-                return; // 找到并加载文件后退出
+            $file = self::resolveTestFile($className);
+            self::$resolvedFileCache[$className] = $file;
+            if ($file !== null) {
+                include_once $file;
             }
+            return;
         }
 
-        // 如果没有找到文件，记录错误但不抛出异常
-        echo "File not found for class: {$className}\n";
+        if (! self::isProjectClass($className)) {
+            return;
+        }
+
+        $normalizedClass = self::normalizeClassName($className);
+        if ($normalizedClass === null) {
+            self::$resolvedFileCache[$className] = null;
+            return;
+        }
+
+        $srcDir = dirname(__DIR__, 2);
+        $file = $srcDir . DIRECTORY_SEPARATOR . str_replace('\\', DIRECTORY_SEPARATOR, $normalizedClass) . '.php';
+        if (is_file($file)) {
+            self::$resolvedFileCache[$className] = $file;
+            include_once $file;
+            return;
+        }
+
+        self::$resolvedFileCache[$className] = null;
     }
 
     /**
-     * 加载当前目录下的所有子目录.
+     * 加载当前目录下的所有子目录（用于补充命名空间映射）.
+     *
+     * @return void
      */
     public static function loadDirectories(): void
     {
-        $directories = dirname(__DIR__, 2);
-        foreach (glob($directories . DIRECTORY_SEPARATOR . '*') as $directory) {
-            if (is_dir($directory) && basename($directory) !== 'Core') {
-                self::$autoloadPathArray[] = basename($directory);
+        $srcDir = dirname(__DIR__, 2);
+        foreach (glob($srcDir . DIRECTORY_SEPARATOR . '*') ?: [] as $directory) {
+            if (! is_dir($directory)) {
+                continue;
+            }
+
+            $name = basename($directory);
+            $prefix = $name . '\\';
+            if (! isset(self::$replacePath[$prefix])) {
+                self::$dynamicPathMap[$prefix] = $prefix;
             }
         }
     }
@@ -104,11 +117,71 @@ class Autoloader
     /**
      * 添加新的自动加载路径.
      *
-     * @param string $path 新的路径
+     * @param string $path 命名空间路径
+     * @return void
      */
     public static function addAutoloadPath(string $path): void
     {
-        self::$autoloadPathArray[] = $path;
+        $trimmed = trim($path, ' \/\\');
+        if ($trimmed === '') {
+            return;
+        }
+
+        $normalized = str_replace('/', '\\', $trimmed) . '\\';
+        self::$dynamicPathMap[$normalized] = $normalized;
+    }
+
+    /**
+     * 判断类名是否属于当前 SDK 命名空间。
+     *
+     * @param string $className 类全限定名
+     * @return bool
+     */
+    private static function isProjectClass(string $className): bool
+    {
+        $prefixes = array_merge(array_keys(self::$replacePath), array_keys(self::$dynamicPathMap));
+        foreach ($prefixes as $prefix) {
+            if (str_starts_with($className, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 将传入类名映射为 src 目录下的相对类路径。
+     *
+     * @param string $className 类全限定名
+     * @return null|string
+     */
+    private static function normalizeClassName(string $className): ?string
+    {
+        $pathMap = array_merge(self::$replacePath, self::$dynamicPathMap);
+
+        foreach ($pathMap as $namespace => $replacement) {
+            if (! str_starts_with($className, $namespace)) {
+                continue;
+            }
+
+            return $replacement . substr($className, strlen($namespace));
+        }
+
+        return null;
+    }
+
+    /**
+     * 解析 tests 命名空间对应的本地测试文件路径。
+     *
+     * @param string $className 类全限定名
+     * @return null|string
+     */
+    private static function resolveTestFile(string $className): ?string
+    {
+        $relativePath = str_replace('\\', DIRECTORY_SEPARATOR, substr($className, 6));
+        $testFile = dirname(dirname(__DIR__, 2)) . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . $relativePath . '.php';
+
+        return is_file($testFile) ? $testFile : null;
     }
 }
 

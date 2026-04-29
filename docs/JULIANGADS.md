@@ -1,4 +1,7 @@
 # JuLiangAds 巨量广告 API 结构
+
+> 调用格式：`$client->JuLiangAds()->{子模块}[->{子模块}]->{方法}()`
+
 ## AdsPro 巨量广告升级版
 
 ### AdAccountBudget 广告账户预算

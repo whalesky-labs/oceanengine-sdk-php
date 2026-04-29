@@ -20,46 +20,106 @@ class OceanEngineException extends \Exception
 
     private string $errorType;
 
+    private ?int $httpStatus = null;
+
+    private ?string $responseBody = null;
+
     /**
-     * ClientException constructor.
-     * @param mixed $errorMessage
-     * @param mixed $errorCode
+     * 构造 SDK 基础异常。
+     *
+     * @param string $errorMessage 错误消息
+     * @param int $errorCode 错误码
      */
-    public function __construct(string $errorMessage, int $errorCode = 500) // 默认值为整数 500
+    public function __construct(string $errorMessage, int $errorCode = 500)
     {
-        parent::__construct($errorMessage);
+        parent::__construct($errorMessage, $errorCode);
         $this->errorMessage = $errorMessage;
         $this->errorCode = $errorCode;
         $this->setErrorType('OceanEngine');
     }
 
+    /**
+     * 获取错误码。
+     *
+     * @return int
+     */
     public function getErrorCode(): int
     {
         return $this->errorCode;
     }
 
+    /**
+     * 设置错误码。
+     *
+     * @param int $errorCode 错误码
+     * @return void
+     */
     public function setErrorCode(int $errorCode): void
     {
         $this->errorCode = $errorCode;
+        $this->code = $errorCode;
     }
 
+    /**
+     * 获取错误消息。
+     *
+     * @return string
+     */
     public function getErrorMessage(): string
     {
         return $this->errorMessage;
     }
 
-    public function setErrorMessage($errorMessage): void
+    /**
+     * 设置错误消息。
+     *
+     * @param string $errorMessage 错误消息
+     * @return void
+     */
+    public function setErrorMessage(string $errorMessage): void
     {
         $this->errorMessage = $errorMessage;
+        $this->message = $errorMessage;
     }
 
+    /**
+     * 获取错误类型。
+     *
+     * @return string
+     */
     public function getErrorType(): string
     {
         return $this->errorType;
     }
 
-    public function setErrorType($errorType): void
+    /**
+     * 设置错误类型。
+     *
+     * @param string $errorType 错误类型
+     * @return void
+     */
+    public function setErrorType(string $errorType): void
     {
         $this->errorType = $errorType;
+    }
+
+    public function getHttpStatus(): ?int
+    {
+        return $this->httpStatus;
+    }
+
+    public function setHttpStatus(?int $httpStatus): void
+    {
+        $this->httpStatus = $httpStatus;
+    }
+
+    public function getResponseBody(): ?string
+    {
+        return $this->responseBody;
+    }
+
+    public function setResponseBody(?string $responseBody): void
+    {
+        $this->responseBody = $responseBody;
     }
 }
