@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace Core\Http;
 
+use Core\Exception\InvalidParamException;
 use Core\Exception\OceanEngineException;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
@@ -56,7 +57,7 @@ class HttpRequest
     /**
      * 是否校验证书，或指定 CA 证书文件路径。
      */
-    public static bool|string $verify = false;
+    public static bool|string $verify = true;
 
     /**
      * @var array<string, Client>
@@ -98,6 +99,7 @@ class HttpRequest
         if (in_array($method, ['POST', 'PUT', 'PATCH'], true) && $postFields !== null) {
             if (is_array($postFields)) {
                 if (self::containsFile($postFields)) {
+                    $options['headers'] = self::withoutHeader($options['headers'], 'Content-Type');
                     $options['multipart'] = self::buildMultipartData($postFields);
                 } else {
                     $options['form_params'] = $postFields;
@@ -116,10 +118,27 @@ class HttpRequest
 
             return $httpResponse;
         } catch (RequestException $e) {
-            throw new OceanEngineException(
-                'HTTP Request Error: ' . $e->getMessage(),
-                $e->getCode() ?: 400
+            $response = $e->getResponse();
+            $statusCode = $response?->getStatusCode();
+            $responseBody = $response !== null ? (string) $response->getBody() : null;
+            $message = 'HTTP Request Error: ' . $e->getMessage();
+
+            if ($statusCode !== null) {
+                $message .= ' (HTTP ' . $statusCode . ')';
+            }
+
+            if ($responseBody !== null && $responseBody !== '') {
+                $message .= ' Response: ' . $responseBody;
+            }
+
+            $exception = new OceanEngineException(
+                $message,
+                $statusCode ?? ($e->getCode() ?: 400)
             );
+            $exception->setHttpStatus($statusCode);
+            $exception->setResponseBody($responseBody);
+
+            throw $exception;
         }
     }
 
@@ -486,6 +505,23 @@ class HttpRequest
     }
 
     /**
+     * 从请求头中移除指定字段名（大小写不敏感）。
+     *
+     * @param array<string, string> $headers
+     * @return array<string, string>
+     */
+    private static function withoutHeader(array $headers, string $headerName): array
+    {
+        foreach ($headers as $name => $_value) {
+            if (strcasecmp($name, $headerName) === 0) {
+                unset($headers[$name]);
+            }
+        }
+
+        return $headers;
+    }
+
+    /**
      * @param null|array<string, mixed> $runtimeConfig
      */
     private static function resolveRuntimeMode(?array $runtimeConfig = null): string
@@ -542,15 +578,7 @@ class HttpRequest
 
     private static function isSwooleRuntime(): bool
     {
-        if (extension_loaded('swoole') || extension_loaded('openswoole')) {
-            return true;
-        }
-
-        if (defined('SWOOLE_VERSION') || defined('OPENSWOOLE_VERSION')) {
-            return true;
-        }
-
-        if (! class_exists(Coroutine::class, false)) {
+        if (! class_exists(Coroutine::class)) {
             return false;
         }
 
@@ -571,15 +599,51 @@ class HttpRequest
     {
         $multipart = [];
         foreach ($data as $key => $value) {
-            if (is_string($value) && str_starts_with($value, '@')) {
-                $path = substr($value, 1);
-                if (file_exists($path)) {
-                    $multipart[] = [
-                        'name' => $key,
-                        'contents' => Utils::tryFopen($path, 'r'),
-                        'filename' => basename($path),
-                    ];
+            if ($value instanceof \CURLFile) {
+                $filename = $value->getFilename();
+                if ($filename === '') {
+                    throw new InvalidParamException(
+                        'client-check-error:Invalid Arguments: the file of "' . $key . '" must provide a filename.',
+                        41
+                    );
                 }
+
+                if (! file_exists($filename)) {
+                    throw new InvalidParamException(
+                        'client-check-error:Invalid Arguments: the file of "' . $key . '" does not exist: ' . $filename,
+                        41
+                    );
+                }
+
+                $multipart[] = [
+                    'name' => $key,
+                    'contents' => Utils::tryFopen($filename, 'r'),
+                    'filename' => $value->getPostFilename() !== '' ? $value->getPostFilename() : basename($filename),
+                    'headers' => $value->getMimeType() !== '' ? [
+                        'Content-Type' => $value->getMimeType(),
+                    ] : [],
+                ];
+            } elseif (is_string($value) && str_starts_with($value, '@')) {
+                $path = substr($value, 1);
+                if ($path === '') {
+                    throw new InvalidParamException(
+                        'client-check-error:Invalid Arguments: the file of "' . $key . '" can not be empty.',
+                        41
+                    );
+                }
+
+                if (! file_exists($path)) {
+                    throw new InvalidParamException(
+                        'client-check-error:Invalid Arguments: the file of "' . $key . '" does not exist: ' . $path,
+                        41
+                    );
+                }
+
+                $multipart[] = [
+                    'name' => $key,
+                    'contents' => Utils::tryFopen($path, 'r'),
+                    'filename' => basename($path),
+                ];
             } else {
                 $multipart[] = [
                     'name' => $key,
@@ -598,11 +662,12 @@ class HttpRequest
     private static function containsFile(array $data): bool
     {
         foreach ($data as $value) {
+            if ($value instanceof \CURLFile) {
+                return true;
+            }
+
             if (is_string($value) && str_starts_with($value, '@')) {
-                $path = substr($value, 1);
-                if (file_exists($path)) {
-                    return true;
-                }
+                return true;
             }
         }
         return false;

@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace OceanEngineSDK;
 
+use Core\Exception\InvalidParamException;
 use Core\Exception\OceanEngineException;
 use Core\Http\HttpRequest;
 use Core\Http\HttpResponse;
@@ -127,12 +128,16 @@ class OceanEngineAuth
     {
         $params = $request->getParams();
         $headers = ['Content-Type' => $request->getContentType()];
+        $encodedParams = json_encode($params);
+        if ($encodedParams === false) {
+            throw new InvalidParamException('请求参数 JSON 编码失败: ' . json_last_error_msg(), 400);
+        }
 
         $targetUrl = $url ?? ($this->is_sandbox ? $this->box_url : $this->server_url) . $request->getUrl();
         return HttpRequest::curl(
             $targetUrl,
             $request->getMethod(),
-            json_encode($params),
+            $encodedParams,
             $headers,
             ['read_timeout' => $request->getTimeout()]
         );

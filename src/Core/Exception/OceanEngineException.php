@@ -20,6 +20,10 @@ class OceanEngineException extends \Exception
 
     private string $errorType;
 
+    private ?int $httpStatus = null;
+
+    private ?string $responseBody = null;
+
     /**
      * 构造 SDK 基础异常。
      *
@@ -97,5 +101,25 @@ class OceanEngineException extends \Exception
     public function setErrorType(string $errorType): void
     {
         $this->errorType = $errorType;
+    }
+
+    public function getHttpStatus(): ?int
+    {
+        return $this->httpStatus;
+    }
+
+    public function setHttpStatus(?int $httpStatus): void
+    {
+        $this->httpStatus = $httpStatus;
+    }
+
+    public function getResponseBody(): ?string
+    {
+        return $this->responseBody;
+    }
+
+    public function setResponseBody(?string $responseBody): void
+    {
+        $this->responseBody = $responseBody;
     }
 }

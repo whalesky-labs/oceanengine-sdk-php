@@ -24,7 +24,7 @@ final class HttpRequestRuntimeTest extends TestCase
     protected function tearDown(): void
     {
         HttpRequest::setRuntimeMode('auto');
-        HttpRequest::setVerify(false);
+        HttpRequest::setVerify(true);
         parent::tearDown();
     }
 
@@ -76,6 +76,8 @@ final class HttpRequestRuntimeTest extends TestCase
 
     public function testNormalizeRuntimeConfigSupportsVerifyOverride(): void
     {
+        HttpRequest::setVerify(true);
+
         $method = new \ReflectionMethod(HttpRequest::class, 'normalizeRuntimeConfig');
         $method->setAccessible(true);
 
@@ -85,6 +87,101 @@ final class HttpRequestRuntimeTest extends TestCase
 
         self::assertTrue($configWithBoolVerify['verify']);
         self::assertSame('/etc/ssl/custom-ca.pem', $configWithPathVerify['verify']);
-        self::assertFalse($configWithInvalidVerify['verify']);
+        self::assertTrue($configWithInvalidVerify['verify']);
+    }
+
+    public function testCanRemovePresetContentTypeHeader(): void
+    {
+        $method = new \ReflectionMethod(HttpRequest::class, 'withoutHeader');
+        $method->setAccessible(true);
+
+        $headers = $method->invoke(
+            null,
+            [
+                'Access-Token' => 'token',
+                'Content-Type' => 'multipart/form-data',
+            ],
+            'Content-Type'
+        );
+
+        self::assertSame(['Access-Token' => 'token'], $headers);
+    }
+
+    public function testCurlFileIsRecognizedAsMultipartUpload(): void
+    {
+        $containsFileMethod = new \ReflectionMethod(HttpRequest::class, 'containsFile');
+        $containsFileMethod->setAccessible(true);
+
+        $buildMultipartMethod = new \ReflectionMethod(HttpRequest::class, 'buildMultipartData');
+        $buildMultipartMethod->setAccessible(true);
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'oe-video-');
+        self::assertNotFalse($tempFile);
+        file_put_contents($tempFile, 'test');
+
+        try {
+            $file = new \CURLFile($tempFile, 'video/mp4', 'sample.mp4');
+
+            self::assertTrue($containsFileMethod->invoke(null, [
+                'advertiser_id' => 123,
+                'video_file' => $file,
+            ]));
+
+            $multipart = $buildMultipartMethod->invoke(null, [
+                'advertiser_id' => 123,
+                'video_file' => $file,
+            ]);
+
+            self::assertCount(2, $multipart);
+            self::assertSame('advertiser_id', $multipart[0]['name']);
+            self::assertSame(123, $multipart[0]['contents']);
+            self::assertSame('video_file', $multipart[1]['name']);
+            self::assertSame('sample.mp4', $multipart[1]['filename']);
+            self::assertSame(['Content-Type' => 'video/mp4'], $multipart[1]['headers']);
+            self::assertIsResource($multipart[1]['contents']);
+            fclose($multipart[1]['contents']);
+        } finally {
+            @unlink($tempFile);
+        }
+    }
+
+    public function testMissingAtPathUploadFailsFast(): void
+    {
+        $containsFileMethod = new \ReflectionMethod(HttpRequest::class, 'containsFile');
+        $containsFileMethod->setAccessible(true);
+
+        $buildMultipartMethod = new \ReflectionMethod(HttpRequest::class, 'buildMultipartData');
+        $buildMultipartMethod->setAccessible(true);
+
+        self::assertTrue($containsFileMethod->invoke(null, [
+            'video_file' => '@/tmp/definitely-not-found-video.mp4',
+        ]));
+
+        $this->expectException(\Core\Exception\InvalidParamException::class);
+        $this->expectExceptionMessage('client-check-error:Invalid Arguments: the file of "video_file" does not exist: /tmp/definitely-not-found-video.mp4');
+
+        $buildMultipartMethod->invoke(null, [
+            'video_file' => '@/tmp/definitely-not-found-video.mp4',
+        ]);
+    }
+
+    public function testCliRuntimeIsNotMisdetectedAsSwooleWhenNoCoroutineIsActive(): void
+    {
+        HttpRequest::setRuntimeMode('auto');
+
+        if (PHP_SAPI !== 'cli') {
+            self::markTestSkipped('Only relevant for CLI runtime.');
+        }
+
+        if (! class_exists(\Swoole\Coroutine::class)) {
+            self::assertSame('cli', HttpRequest::getRuntimeMode());
+            return;
+        }
+
+        if (\Swoole\Coroutine::getCid() > -1) {
+            self::markTestSkipped('Current process is already inside a Swoole coroutine.');
+        }
+
+        self::assertSame('cli', HttpRequest::getRuntimeMode());
     }
 }

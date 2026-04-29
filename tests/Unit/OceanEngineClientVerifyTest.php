@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
+use Core\Http\HttpRequest;
 use OceanEngineSDK\OceanEngineClient;
 use PHPUnit\Framework\TestCase;
 
@@ -21,12 +22,33 @@ use PHPUnit\Framework\TestCase;
  */
 final class OceanEngineClientVerifyTest extends TestCase
 {
+    protected function tearDown(): void
+    {
+        HttpRequest::setVerify(true);
+        parent::tearDown();
+    }
+
+    public function testClientDefaultsToTlsVerificationEnabled(): void
+    {
+        $client = new OceanEngineClient('token');
+
+        self::assertTrue($this->readPrivateProperty($client, 'verify'));
+    }
+
     public function testCanEnableTlsVerifyOnClient(): void
     {
         $client = new OceanEngineClient('token');
         $client->setVerify(true);
 
         self::assertTrue($this->readPrivateProperty($client, 'verify'));
+    }
+
+    public function testCanExplicitlyDisableTlsVerifyOnClient(): void
+    {
+        $client = new OceanEngineClient('token');
+        $client->setVerify(false);
+
+        self::assertFalse($this->readPrivateProperty($client, 'verify'));
     }
 
     /**

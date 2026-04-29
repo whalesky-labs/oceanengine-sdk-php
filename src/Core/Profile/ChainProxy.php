@@ -25,12 +25,12 @@ class ChainProxy extends BaseModule
     private array $instances = [];
 
     /**
-     * @var array<string, array<string, string>>
+     * @var array<string, array<string, list<string>>>
      */
     private static array $providerCache = [];
 
     /**
-     * @var array<string, array<string, string>>
+     * @var array<string, array<string, list<string>>>
      */
     private static array $childClassCache = [];
 
@@ -59,12 +59,12 @@ class ChainProxy extends BaseModule
             return $this->instances[$name];
         }
 
-        $providers = $this->discoverProviders();
-        if (! array_key_exists($name, $providers)) {
+        $providerNamespace = $this->resolveProviderNamespace($name);
+        if ($providerNamespace === null) {
             throw new OceanEngineException("Undefined property {$name}", 500);
         }
 
-        $this->instances[$name] = new self($this->client, $providers[$name]);
+        $this->instances[$name] = new self($this->client, $providerNamespace);
 
         return $this->instances[$name];
     }
@@ -101,6 +101,10 @@ class ChainProxy extends BaseModule
         try {
             return $this->__get($name);
         } catch (OceanEngineException $e) {
+            if (! str_starts_with($e->getMessage(), 'Undefined property ')) {
+                throw $e;
+            }
+
             throw new \BadMethodCallException("Class {$className} not found in {$this->namespace}");
         }
     }
@@ -108,7 +112,7 @@ class ChainProxy extends BaseModule
     /**
      * 扫描并缓存当前命名空间下可访问的子模块。
      *
-     * @return array<string, string>
+     * @return array<string, list<string>>
      */
     private function discoverProviders(): array
     {
@@ -136,7 +140,7 @@ class ChainProxy extends BaseModule
      * @param string $baseDir 扫描基目录
      * @param string $baseNamespace 基础命名空间
      * @param string $relativePath 相对路径
-     * @param array<string, string> $providers
+     * @param array<string, list<string>> $providers
      * @return void
      */
     private function scanDirectory(string $baseDir, string $baseNamespace, string $relativePath, array &$providers): void
@@ -159,7 +163,8 @@ class ChainProxy extends BaseModule
                 continue;
             }
 
-            $providers[$item] = $currentNamespace . '\\' . $item;
+            $providers[$item] ??= [];
+            $providers[$item][] = $currentNamespace . '\\' . $item;
 
             $newRelativePath = $relativePath !== '' ? $relativePath . '/' . $item : $item;
             $this->scanDirectory($baseDir, $baseNamespace, $newRelativePath, $providers);
@@ -200,13 +205,17 @@ class ChainProxy extends BaseModule
             return null;
         }
 
-        return $childClasses[$classBaseName];
+        return $this->resolveUniqueTarget(
+            $classBaseName,
+            $childClasses[$classBaseName],
+            '请求类'
+        );
     }
 
     /**
      * 发现并缓存子目录中的请求类。
      *
-     * @return array<string, string>
+     * @return array<string, list<string>>
      */
     private function discoverChildClasses(): array
     {
@@ -243,14 +252,44 @@ class ChainProxy extends BaseModule
                     continue;
                 }
 
-                if (! isset($classes[$classBaseName])) {
-                    $classes[$classBaseName] = $this->namespace . '\\' . $item . '\\' . $classBaseName;
-                }
+                $classes[$classBaseName] ??= [];
+                $classes[$classBaseName][] = $this->namespace . '\\' . $item . '\\' . $classBaseName;
             }
         }
 
         self::$childClassCache[$this->namespace] = $classes;
 
         return $classes;
+    }
+
+    private function resolveProviderNamespace(string $name): ?string
+    {
+        $providers = $this->discoverProviders();
+        if (! isset($providers[$name])) {
+            return null;
+        }
+
+        return $this->resolveUniqueTarget($name, $providers[$name], '子模块');
+    }
+
+    /**
+     * @param list<string> $candidates
+     */
+    private function resolveUniqueTarget(string $name, array $candidates, string $targetType): string
+    {
+        $uniqueCandidates = array_values(array_unique($candidates));
+        if (count($uniqueCandidates) === 1) {
+            return $uniqueCandidates[0];
+        }
+
+        throw new OceanEngineException(
+            sprintf(
+                '%s %s 存在歧义，请使用显式父级路径。可选路径: %s',
+                $targetType,
+                $name,
+                implode(', ', $uniqueCandidates)
+            ),
+            500
+        );
     }
 }

@@ -46,4 +46,14 @@ final class OceanEngineExceptionTest extends TestCase
         self::assertSame('changed', $exception->getMessage());
         self::assertSame('changed', $exception->getErrorMessage());
     }
+
+    public function testCanStoreHttpStatusAndResponseBody(): void
+    {
+        $exception = new OceanEngineException('oops', 123);
+        $exception->setHttpStatus(429);
+        $exception->setResponseBody('{"code":40100,"message":"rate limited"}');
+
+        self::assertSame(429, $exception->getHttpStatus());
+        self::assertSame('{"code":40100,"message":"rate limited"}', $exception->getResponseBody());
+    }
 }

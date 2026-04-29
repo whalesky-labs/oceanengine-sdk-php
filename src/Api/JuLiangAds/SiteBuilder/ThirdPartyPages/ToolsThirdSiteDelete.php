@@ -13,7 +13,6 @@ declare(strict_types=1);
 namespace Api\JuLiangAds\SiteBuilder\ThirdPartyPages;
 
 use Core\Exception\InvalidParamException;
-use Core\Helper\RequestCheckUtil;
 use Core\Profile\RpcRequest;
 
 /**
@@ -44,7 +43,12 @@ class ToolsThirdSiteDelete extends RpcRequest
      */
     public function check(): void
     {
-        RequestCheckUtil::checkNotNull($this->advertiser_id, 'advertiser_id');
-        RequestCheckUtil::checkNotNull($this->site_id, 'site_id');
+        if (! isset($this->advertiser_id)) {
+            throw new InvalidParamException('client-check-error:Missing Required Arguments: advertiser_id', 400);
+        }
+
+        if (! isset($this->site_id)) {
+            throw new InvalidParamException('client-check-error:Missing Required Arguments: site_id', 400);
+        }
     }
 }

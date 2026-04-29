@@ -58,7 +58,7 @@ $client->setRetryConfig(
     enableRetry: true
 );
 
-// 配置 TLS 证书校验（默认 false）
+// 可选：显式配置 TLS 证书校验（默认已开启）
 $client->setVerify(true);
 
 // 调用 API
@@ -219,20 +219,49 @@ $client->setRetryEnabled(false);  // 禁用重试
 | `enabled` | 是否启用证书校验 | `true` / `false` |
 | `caPath` | CA 证书路径（仅 `enabled=true` 时生效） | `/etc/ssl/custom-ca.pem` |
 
+#### 文件上传请求
+
+对于素材、资质、券码等文件上传接口，不要使用 `application/json` 传本地文件。SDK 支持以下两种文件参数写法，并会自动按 `multipart/form-data` 发送：
+
+```php
+<?php
+
+$videoPath = '/absolute/path/to/video.mp4';
+
+$response = $client->Materials()
+    ->ImageVideoMgmt
+    ->FileVideoAd()
+    ->setParams([
+        'advertiser_id' => 123456789,
+        'upload_type' => 'UPLOAD_BY_FILE',
+        'video_file' => '@' . $videoPath,
+        'video_signature' => md5_file($videoPath),
+    ])
+    ->send();
+```
+
+也支持：
+
+```php
+'video_file' => new \CURLFile($videoPath, 'video/mp4', basename($videoPath))
+```
+
+其中 `FileVideoAd` 在 `UPLOAD_BY_FILE` 模式下必须传 `video_file` 和 `video_signature`；在 `UPLOAD_BY_URL` 模式下必须传 `video_url`。
+
 ```php
 <?php
 
 $client = new OceanEngineClient(TOKEN);
 
-$client->setVerify(false);                          // 默认行为：关闭证书校验
-$client->setVerify(true);                           // 启用系统 CA 校验
+$client->setVerify(false);                          // 显式关闭证书校验（不推荐，仅兼容历史环境）
+$client->setVerify(true);                           // 默认行为：启用系统 CA 校验
 $client->setVerify(true, '/etc/ssl/custom-ca.pem'); // 启用并指定 CA 文件
 ```
 
 说明：
 
-- 当前默认值为 `false`（兼容历史行为）。
-- 生产环境建议启用证书校验，避免中间人攻击风险。
+- 当前默认值为 `true`，默认使用系统 CA 进行证书校验。
+- 仅在明确需要兼容历史环境时再关闭证书校验，避免中间人攻击风险。
 
 #### 获取广告主信息
 

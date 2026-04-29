@@ -14,7 +14,10 @@ namespace Tests\Unit;
 
 use Api\Account\AccountInfo\AdvertiserInfo;
 use Api\JuLiangQianChuan\AdvertisingMgmt\AccountBudget\AccountBudgetGet;
+use Api\Tools\AppManagement\WorkspaceUpgrade\ToolsEbpAppList;
+use Api\Tools\ByteMiniAppManagement\WorkspaceUpgrade\ToolsEbpWechatAppletList;
 use Api\Tools\CommentMgmt\BlockedWordsUsers\ToolsCommentTermsBannedAdd;
+use Core\Exception\OceanEngineException;
 use OceanEngineSDK\OceanEngineClient;
 use PHPUnit\Framework\TestCase;
 
@@ -75,6 +78,44 @@ final class ChainProxyTest extends TestCase
             ToolsCommentTermsBannedAdd::class,
             $explicitRequest
         );
+    }
+
+    public function testAmbiguousShortModulePathThrowsExplicitError(): void
+    {
+        $client = new OceanEngineClient('token');
+
+        $this->expectException(OceanEngineException::class);
+        $this->expectExceptionMessage('子模块 WorkspaceUpgrade 存在歧义');
+
+        $client->module('Tools')->WorkspaceUpgrade;
+    }
+
+    public function testExplicitWorkspaceUpgradePathsRemainReachable(): void
+    {
+        $client = new OceanEngineClient('token');
+
+        $appManagementRequest = $client->module('Tools')
+            ->AppManagement
+            ->WorkspaceUpgrade
+            ->ToolsEbpAppList();
+
+        $byteMiniAppRequest = $client->module('Tools')
+            ->ByteMiniAppManagement
+            ->WorkspaceUpgrade
+            ->ToolsEbpWechatAppletList();
+
+        self::assertInstanceOf(ToolsEbpAppList::class, $appManagementRequest);
+        self::assertInstanceOf(ToolsEbpWechatAppletList::class, $byteMiniAppRequest);
+    }
+
+    public function testAmbiguousShortRequestClassThrowsExplicitError(): void
+    {
+        $client = new OceanEngineClient('token');
+
+        $this->expectException(OceanEngineException::class);
+        $this->expectExceptionMessage('请求类 QianChuanReportCustomGet 存在歧义');
+
+        $client->module('DataReports')->QianChuanReportCustomGet();
     }
 
     public function testUnknownNestedCallThrowsBadMethodCallException(): void
