@@ -1,0 +1,119 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Release mode: auto increments patch, manual uses the provided version"
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - manual
+      version:
+        description: "Manual version, e.g. 5.0.0. Leave empty for auto mode."
+        required: false
+        type: string
+      target_branch:
+        description: "Branch to release from"
+        required: true
+        default: main
+        type: choice
+        options:
+          - main
+          - 4.x
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.target_branch }}
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MODE="${{ inputs.mode }}"
+          INPUT_VERSION="${{ inputs.version }}"
+
+          normalize_version() {
+            local raw="$1"
+            raw="${raw#refs/tags/}"
+            raw="${raw#v}"
+            echo "$raw"
+          }
+
+          validate_version() {
+            local version="$1"
+            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          }
+
+          latest_tag="$(git tag --list | grep -E '^(v)?[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
+
+          if [[ "$MODE" == "manual" ]]; then
+            if [[ -z "$INPUT_VERSION" ]]; then
+              echo "Manual mode requires a version input." >&2
+              exit 1
+            fi
+
+            version="$(normalize_version "$INPUT_VERSION")"
+            if ! validate_version "$version"; then
+              echo "Invalid manual version: $INPUT_VERSION" >&2
+              exit 1
+            fi
+          else
+            if [[ -z "$latest_tag" ]]; then
+              version="0.0.1"
+            else
+              latest_version="$(normalize_version "$latest_tag")"
+              if ! validate_version "$latest_version"; then
+                echo "Latest tag is not a valid semver release tag: $latest_tag" >&2
+                exit 1
+              fi
+
+              IFS='.' read -r major minor patch <<< "$latest_version"
+              version="${major}.${minor}.$((patch + 1))"
+            fi
+          fi
+
+          if git rev-parse -q --verify "refs/tags/${version}" >/dev/null; then
+            echo "Tag already exists: ${version}" >&2
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
+            echo "Equivalent v-prefixed tag already exists: v${version}" >&2
+            exit 1
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${version}" >> "$GITHUB_OUTPUT"
+          echo "Resolved release version: ${version}"
+
+      - name: Create and push tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ inputs.target_branch }}
+          name: ${{ steps.version.outputs.version }}
+          generate_release_notes: true
