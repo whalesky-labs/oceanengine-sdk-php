@@ -178,6 +178,27 @@ final class OceanEngineClientTest extends TestCase
         }
     }
 
+    public function testRequestLevelRetryOverrideOnlyDisablesRetryForCurrentRequest(): void
+    {
+        $client = new OceanEngineClient('token');
+
+        $uploadRequest = new class($client) extends RpcRequest {
+            protected string $url = 'http://127.0.0.1:65535/upload';
+
+            public function shouldEnableRetry(): bool
+            {
+                return false;
+            }
+        };
+
+        $normalRequest = new class($client) extends RpcRequest {
+            protected string $url = 'http://127.0.0.1:65535/default';
+        };
+
+        self::assertFalse($this->readRuntimeHttpConfig($client, $uploadRequest)['enable_retry']);
+        self::assertTrue($this->readRuntimeHttpConfig($client, $normalRequest)['enable_retry']);
+    }
+
     /**
      * @param object $object
      * @param string $propertyName
@@ -190,5 +211,16 @@ final class OceanEngineClientTest extends TestCase
         $property = $ref->getProperty($propertyName);
         $property->setAccessible(true);
         return $property->getValue($object);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function readRuntimeHttpConfig(OceanEngineClient $client, RpcRequest $request): array
+    {
+        $method = new \ReflectionMethod($client, 'buildRuntimeHttpConfig');
+        $method->setAccessible(true);
+
+        return $method->invoke($client, $request->getTimeout(), $request);
     }
 }

@@ -14,6 +14,7 @@ namespace Core\Profile;
 
 use Core\Exception\InvalidParamException;
 use Core\Exception\OceanEngineException;
+use Core\Helper\RequestCheckUtil;
 use Core\Http\HttpResponse;
 use OceanEngineSDK\OceanEngineClient;
 
@@ -150,6 +151,14 @@ class RpcRequest implements RequestInterface
     public function getContentType(): string
     {
         return $this->content_type;
+    }
+
+    /**
+     * 当前请求是否允许自动重试。
+     */
+    public function shouldEnableRetry(): bool
+    {
+        return ! RequestCheckUtil::containsUploadFile($this->params);
     }
 
     /**

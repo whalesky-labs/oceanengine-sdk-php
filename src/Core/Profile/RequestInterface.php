@@ -80,4 +80,9 @@ interface RequestInterface
      * @return void
      */
     public function check(): void;
+
+    /**
+     * 当前请求是否允许自动重试。
+     */
+    public function shouldEnableRetry(): bool;
 }

@@ -174,7 +174,7 @@ class OceanEngineClient
             $request->getMethod(),
             $params,
             $headers,
-            $this->buildRuntimeHttpConfig($request->getTimeout())
+            $this->buildRuntimeHttpConfig($request->getTimeout(), $request)
         );
     }
 
@@ -292,12 +292,12 @@ class OceanEngineClient
     /**
      * @return array<string, mixed>
      */
-    private function buildRuntimeHttpConfig(int $requestTimeout): array
+    private function buildRuntimeHttpConfig(int $requestTimeout, RequestInterface $request): array
     {
         return [
             'connect_timeout' => $this->connectTimeout,
             'read_timeout' => $requestTimeout > 0 ? $requestTimeout : $this->defaultReadTimeout,
-            'enable_retry' => $this->retryEnabled,
+            'enable_retry' => $this->retryEnabled && $request->shouldEnableRetry(),
             'max_retries' => $this->maxRetries,
             'retry_delay' => $this->retryDelay,
             'retryable_status_codes' => $this->retryableStatusCodes,

@@ -234,6 +234,26 @@ class RequestCheckUtil
     }
 
     /**
+     * 判断参数中是否包含上传文件。
+     *
+     * @param array<string, mixed> $params
+     */
+    public static function containsUploadFile(array $params): bool
+    {
+        foreach ($params as $value) {
+            if ($value instanceof \CURLFile) {
+                return true;
+            }
+
+            if (is_string($value) && str_starts_with($value, '@')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * 判断是否为空.
      *
      * @param mixed $value 待校验值
