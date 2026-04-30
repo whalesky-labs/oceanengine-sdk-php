@@ -1,10 +1,23 @@
-# Marketing PHP SDK
+<p align="center">
+  <img src="https://avatars.githubusercontent.com/u/277389313?s=200&v=4" width="128" height="128" alt="OceanEngine SDK for PHP">
+</p>
 
-[![PHP Version](https://img.shields.io/badge/PHP-%3E%3D8.0-blue.svg)](https://php.net)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Composer](https://img.shields.io/badge/Composer-Ready-orange.svg)](https://getcomposer.org/)
+<h1 align="center">OceanEngine SDK for PHP</h1>
 
-> 🚀 **巨量引擎开放平台 PHP SDK** - 为 PHP 开发者提供完整的巨量引擎 API 集成解决方案
+<p align="center">
+  巨量引擎开放平台 PHP SDK
+</p>
+
+<p align="center">
+  🚀 巨量引擎开放平台 PHP SDK - 为 PHP 开发者提供完整的巨量引擎 API 集成解决方案
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/PHP-%3E%3D8.1-777BB4?logo=php&logoColor=white" alt="PHP >= 8.1">
+  <img src="https://img.shields.io/badge/Composer-package-885630?logo=composer&logoColor=white" alt="Composer package">
+  <img src="https://img.shields.io/badge/Guzzle-7.x-0E83CD" alt="Guzzle 7.x">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License"></a>
+</p>
 
 ## 📖 概述
 
@@ -212,6 +225,8 @@ $client->setRetryEnabled(false);  // 禁用重试
 
 说明：重试与超时配置只作用于当前 `OceanEngineClient` 实例，多实例并发互不影响。
 
+补充说明：当请求参数中包含本地文件上传（例如 `@/path/to/file` 或 `\CURLFile`）时，SDK 会自动禁用该次请求的重试机制，避免 `multipart/form-data` 请求体在重试时无法重放而掩盖首次真实错误。普通 JSON、表单和纯 URL 上传请求仍按当前客户端的重试配置执行。
+
 #### 配置 TLS 证书校验
 
 | 方法参数 | 说明 | 示例 |
@@ -247,6 +262,8 @@ $response = $client->Materials()
 ```
 
 其中 `FileVideoAd` 在 `UPLOAD_BY_FILE` 模式下必须传 `video_file` 和 `video_signature`；在 `UPLOAD_BY_URL` 模式下必须传 `video_url`。
+
+当使用本地文件上传时，SDK 会自动关闭当前请求的重试，以避免网络重试阶段因请求体无法 rewind 而产生额外错误；如果是 `UPLOAD_BY_URL`，则仍沿用当前客户端的重试配置。
 
 ```php
 <?php
