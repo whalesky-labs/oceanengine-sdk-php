@@ -112,7 +112,7 @@ final class HttpRequestRuntimeTest extends TestCase
         $containsFileMethod = new \ReflectionMethod(HttpRequest::class, 'containsFile');
         $containsFileMethod->setAccessible(true);
 
-        $buildMultipartMethod = new \ReflectionMethod(HttpRequest::class, 'buildMultipartData');
+        $buildMultipartMethod = new \ReflectionMethod(HttpRequest::class, 'buildUploadMultipartData');
         $buildMultipartMethod->setAccessible(true);
 
         $tempFile = tempnam(sys_get_temp_dir(), 'oe-video-');
@@ -150,7 +150,7 @@ final class HttpRequestRuntimeTest extends TestCase
         $containsFileMethod = new \ReflectionMethod(HttpRequest::class, 'containsFile');
         $containsFileMethod->setAccessible(true);
 
-        $buildMultipartMethod = new \ReflectionMethod(HttpRequest::class, 'buildMultipartData');
+        $buildMultipartMethod = new \ReflectionMethod(HttpRequest::class, 'buildUploadMultipartData');
         $buildMultipartMethod->setAccessible(true);
 
         self::assertTrue($containsFileMethod->invoke(null, [
@@ -163,6 +163,51 @@ final class HttpRequestRuntimeTest extends TestCase
         $buildMultipartMethod->invoke(null, [
             'video_file' => '@/tmp/definitely-not-found-video.mp4',
         ]);
+    }
+
+    public function testAtPathUploadIsConvertedToMultipartStream(): void
+    {
+        $buildMultipartMethod = new \ReflectionMethod(HttpRequest::class, 'buildUploadMultipartData');
+        $buildMultipartMethod->setAccessible(true);
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'oe-video-');
+        self::assertNotFalse($tempFile);
+        file_put_contents($tempFile, 'test');
+
+        try {
+            $multipart = $buildMultipartMethod->invoke(null, [
+                'advertiser_id' => 123,
+                'video_file' => '@' . $tempFile,
+            ]);
+
+            self::assertSame(123, $multipart[0]['contents']);
+            self::assertSame('video_file', $multipart[1]['name']);
+            self::assertSame(basename($tempFile), $multipart[1]['filename']);
+            self::assertIsResource($multipart[1]['contents']);
+            fclose($multipart[1]['contents']);
+        } finally {
+            @unlink($tempFile);
+        }
+    }
+
+    public function testUploadRequestOptionsDisableRedirectsAndHttpErrors(): void
+    {
+        $method = new \ReflectionMethod(HttpRequest::class, 'buildUploadRequestOptions');
+        $method->setAccessible(true);
+
+        $multipart = [
+            ['name' => 'advertiser_id', 'contents' => 123],
+        ];
+
+        $options = $method->invoke(null, $multipart, ['Content-Type' => 'multipart/form-data'], [
+            'read_timeout' => 30,
+            'connect_timeout' => 20,
+        ]);
+
+        self::assertFalse($options['http_errors']);
+        self::assertFalse($options['allow_redirects']);
+        self::assertSame([], $options['headers']);
+        self::assertSame($multipart, $options['multipart']);
     }
 
     public function testCliRuntimeIsNotMisdetectedAsSwooleWhenNoCoroutineIsActive(): void

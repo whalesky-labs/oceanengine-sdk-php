@@ -21,7 +21,6 @@ use GuzzleHttp\Exception\ServerException;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\MessageFormatter;
 use GuzzleHttp\Middleware;
-use GuzzleHttp\Psr7\Utils;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Log\NullLogger;
@@ -86,28 +85,15 @@ class HttpRequest
         array $runtimeConfig = []
     ): HttpResponse {
         $config = self::normalizeRuntimeConfig($runtimeConfig);
-        $runtimeMode = self::resolveRuntimeMode($config);
-        $client = self::getClient($config, $runtimeMode);
         $method = strtoupper($method);
 
-        $options = [
-            'headers' => $headers,
-            'timeout' => $config['read_timeout'],
-            'connect_timeout' => $config['connect_timeout'],
-        ];
-
-        if (in_array($method, ['POST', 'PUT', 'PATCH'], true) && $postFields !== null) {
-            if (is_array($postFields)) {
-                if (self::containsFile($postFields)) {
-                    $options['headers'] = self::withoutHeader($options['headers'], 'Content-Type');
-                    $options['multipart'] = self::buildMultipartData($postFields);
-                } else {
-                    $options['form_params'] = $postFields;
-                }
-            } else {
-                $options['body'] = $postFields;
-            }
+        if (self::shouldUseUploadRequestPath($method, $postFields)) {
+            return self::sendUploadRequest($url, $method, $postFields, $headers, $config);
         }
+
+        $runtimeMode = self::resolveRuntimeMode($config);
+        $client = self::getClient($config, $runtimeMode);
+        $options = self::buildStandardRequestOptions($method, $postFields, $headers, $config);
 
         try {
             $response = $client->request($method, $url, $options);
@@ -139,6 +125,62 @@ class HttpRequest
             $exception->setResponseBody($responseBody);
 
             throw $exception;
+        }
+    }
+
+    /**
+     * 发送上传请求。
+     *
+     * @param array<string, mixed>|string|null $postFields
+     * @param array<string, string> $headers
+     * @param array<string, mixed> $config
+     */
+    private static function sendUploadRequest(
+        string $url,
+        string $method,
+        null|array|string $postFields,
+        array $headers,
+        array $config
+    ): HttpResponse {
+        if (! is_array($postFields)) {
+            throw new InvalidParamException('Upload request post fields must be an array.', 400);
+        }
+
+        $multipart = self::buildUploadMultipartData($postFields);
+        $client = self::createUploadClient($config);
+        $options = self::buildUploadRequestOptions($multipart, $headers, $config);
+
+        try {
+            $response = $client->request($method, $url, $options);
+            $httpResponse = new HttpResponse();
+            $httpResponse->setBody((string) $response->getBody());
+            $httpResponse->setStatus($response->getStatusCode());
+
+            return $httpResponse;
+        } catch (RequestException $e) {
+            $response = $e->getResponse();
+            $statusCode = $response?->getStatusCode();
+            $responseBody = $response !== null ? (string) $response->getBody() : null;
+            $message = 'HTTP Request Error: ' . $e->getMessage();
+
+            if ($statusCode !== null) {
+                $message .= ' (HTTP ' . $statusCode . ')';
+            }
+
+            if ($responseBody !== null && $responseBody !== '') {
+                $message .= ' Response: ' . $responseBody;
+            }
+
+            $exception = new OceanEngineException(
+                $message,
+                $statusCode ?? ($e->getCode() ?: 400)
+            );
+            $exception->setHttpStatus($statusCode);
+            $exception->setResponseBody($responseBody);
+
+            throw $exception;
+        } finally {
+            self::closeMultipartStreams($multipart);
         }
     }
 
@@ -278,6 +320,24 @@ class HttpRequest
     }
 
     /**
+     * 上传请求使用独立的 Guzzle Client，避免复用连接、流和重试中间件。
+     *
+     * @param array<string, mixed> $config
+     */
+    private static function createUploadClient(array $config): Client
+    {
+        $stack = HandlerStack::create();
+        $stack->push(self::createLogMiddleware());
+
+        return new Client([
+            'handler' => $stack,
+            'verify' => $config['verify'],
+            'http_errors' => false,
+            'allow_redirects' => false,
+        ]);
+    }
+
+    /**
      * @param array<string, mixed> $config
      */
     private static function buildClientCacheKey(array $config, string $runtimeMode): string
@@ -386,6 +446,56 @@ class HttpRequest
             ),
             'info'
         );
+    }
+
+    /**
+     * @param null|array<string, mixed>|string $postFields
+     * @param array<string, string> $headers
+     * @param array<string, mixed> $config
+     * @return array<string, mixed>
+     */
+    private static function buildStandardRequestOptions(
+        string $method,
+        null|array|string $postFields,
+        array $headers,
+        array $config
+    ): array {
+        $options = [
+            'headers' => $headers,
+            'timeout' => $config['read_timeout'],
+            'connect_timeout' => $config['connect_timeout'],
+        ];
+
+        if (! in_array($method, ['POST', 'PUT', 'PATCH'], true) || $postFields === null) {
+            return $options;
+        }
+
+        if (is_array($postFields)) {
+            $options['form_params'] = $postFields;
+            return $options;
+        }
+
+        $options['body'] = $postFields;
+
+        return $options;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $multipart
+     * @param array<string, string> $headers
+     * @param array<string, mixed> $config
+     * @return array<string, mixed>
+     */
+    private static function buildUploadRequestOptions(array $multipart, array $headers, array $config): array
+    {
+        return [
+            'headers' => self::withoutHeader($headers, 'Content-Type'),
+            'multipart' => $multipart,
+            'timeout' => $config['read_timeout'],
+            'connect_timeout' => $config['connect_timeout'],
+            'http_errors' => false,
+            'allow_redirects' => false,
+        ];
     }
 
     /**
@@ -590,14 +700,15 @@ class HttpRequest
     }
 
     /**
-     * 构建multipart数据用于文件上传.
+     * 构建 multipart 上传数据，每次请求都重新 fopen，避免常驻进程中复用 stream。
      *
      * @param array<string, mixed> $data
      * @return array<int, array<string, mixed>>
      */
-    private static function buildMultipartData(array $data): array
+    private static function buildUploadMultipartData(array $data): array
     {
         $multipart = [];
+
         foreach ($data as $key => $value) {
             if ($value instanceof \CURLFile) {
                 $filename = $value->getFilename();
@@ -615,15 +726,26 @@ class HttpRequest
                     );
                 }
 
+                $stream = fopen($filename, 'rb');
+                if ($stream === false) {
+                    throw new InvalidParamException(
+                        'client-check-error:Invalid Arguments: the file of "' . $key . '" is not readable: ' . $filename,
+                        41
+                    );
+                }
+
                 $multipart[] = [
                     'name' => $key,
-                    'contents' => Utils::tryFopen($filename, 'r'),
+                    'contents' => $stream,
                     'filename' => $value->getPostFilename() !== '' ? $value->getPostFilename() : basename($filename),
                     'headers' => $value->getMimeType() !== '' ? [
                         'Content-Type' => $value->getMimeType(),
                     ] : [],
                 ];
-            } elseif (is_string($value) && str_starts_with($value, '@')) {
+                continue;
+            }
+
+            if (is_string($value) && str_starts_with($value, '@')) {
                 $path = substr($value, 1);
                 if ($path === '') {
                     throw new InvalidParamException(
@@ -639,19 +761,51 @@ class HttpRequest
                     );
                 }
 
+                $stream = fopen($path, 'rb');
+                if ($stream === false) {
+                    throw new InvalidParamException(
+                        'client-check-error:Invalid Arguments: the file of "' . $key . '" is not readable: ' . $path,
+                        41
+                    );
+                }
+
                 $multipart[] = [
                     'name' => $key,
-                    'contents' => Utils::tryFopen($path, 'r'),
+                    'contents' => $stream,
                     'filename' => basename($path),
                 ];
-            } else {
-                $multipart[] = [
-                    'name' => $key,
-                    'contents' => $value,
-                ];
+                continue;
+            }
+
+            $multipart[] = [
+                'name' => $key,
+                'contents' => is_bool($value) ? ($value ? '1' : '0') : $value,
+            ];
+        }
+
+        return $multipart;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $multipart
+     */
+    private static function closeMultipartStreams(array $multipart): void
+    {
+        foreach ($multipart as $part) {
+            if (isset($part['contents']) && is_resource($part['contents'])) {
+                fclose($part['contents']);
             }
         }
-        return $multipart;
+    }
+
+    /**
+     * @param null|array<string, mixed>|string $postFields
+     */
+    private static function shouldUseUploadRequestPath(string $method, null|array|string $postFields): bool
+    {
+        return in_array($method, ['POST', 'PUT', 'PATCH'], true)
+            && is_array($postFields)
+            && self::containsFile($postFields);
     }
 
     /**
