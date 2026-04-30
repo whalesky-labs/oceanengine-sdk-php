@@ -1,6 +1,5 @@
 {
   "name": "westng/oceanengine-sdk-php",
-  "version": "4.0.0",
   "description": "巨量引擎开放平台PHP语言SDK",
   "keywords": [
     "巨量引擎",
