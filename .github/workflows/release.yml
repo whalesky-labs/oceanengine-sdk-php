@@ -1,10 +1,20 @@
 name: Release
+run-name: >-
+  ${{
+    github.event_name == 'push'
+    && format('发布 {0}', github.ref_name)
+    || format('发布 {0}（{1}）', github.event.inputs.mode, github.event.inputs.version || '自动')
+  }}
 
 on:
+  push:
+    tags:
+      - 'v*'
+      - '[0-9]+.[0-9]+.[0-9]+'
   workflow_dispatch:
     inputs:
       mode:
-        description: "Release mode: auto increments patch, manual uses the provided version"
+        description: "版本模式"
         required: true
         default: auto
         type: choice
@@ -12,11 +22,16 @@ on:
           - auto
           - manual
       version:
-        description: "Manual version, e.g. 5.0.0. Leave empty for auto mode."
+        description: "手动指定版本号，例如 5.0.0"
         required: false
         type: string
+      publish_release:
+        description: "是否创建并发布 GitHub Release"
+        required: true
+        default: true
+        type: boolean
       target_branch:
-        description: "Branch to release from"
+        description: "发布来源分支"
         required: true
         default: main
         type: choice
@@ -27,6 +42,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref_name || github.run_id }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -35,17 +54,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.target_branch }}
+          ref: ${{ github.event_name == 'push' && github.ref || inputs.target_branch }}
           fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          coverage: none
 
       - name: Resolve version
         id: version
         shell: bash
         run: |
           set -euo pipefail
-
-          MODE="${{ inputs.mode }}"
-          INPUT_VERSION="${{ inputs.version }}"
 
           normalize_version() {
             local raw="$1"
@@ -61,46 +83,67 @@ jobs:
 
           latest_tag="$(git tag --list | grep -E '^(v)?[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
 
-          if [[ "$MODE" == "manual" ]]; then
-            if [[ -z "$INPUT_VERSION" ]]; then
-              echo "Manual mode requires a version input." >&2
-              exit 1
-            fi
-
-            version="$(normalize_version "$INPUT_VERSION")"
-            if ! validate_version "$version"; then
-              echo "Invalid manual version: $INPUT_VERSION" >&2
-              exit 1
-            fi
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            version="$(normalize_version "${GITHUB_REF_NAME}")"
           else
-            if [[ -z "$latest_tag" ]]; then
-              version="0.0.1"
-            else
-              latest_version="$(normalize_version "$latest_tag")"
-              if ! validate_version "$latest_version"; then
-                echo "Latest tag is not a valid semver release tag: $latest_tag" >&2
+            mode="${{ inputs.mode }}"
+            input_version="${{ inputs.version }}"
+
+            if [[ "$mode" == "manual" ]]; then
+              if [[ -z "$input_version" ]]; then
+                echo "手动模式必须填写版本号。" >&2
                 exit 1
               fi
 
-              IFS='.' read -r major minor patch <<< "$latest_version"
-              version="${major}.${minor}.$((patch + 1))"
+              version="$(normalize_version "$input_version")"
+            else
+              if [[ -z "$latest_tag" ]]; then
+                version="0.0.1"
+              else
+                latest_version="$(normalize_version "$latest_tag")"
+                if ! validate_version "$latest_version"; then
+                  echo "最新标签不是合法的语义化版本标签：$latest_tag" >&2
+                  exit 1
+                fi
+
+                IFS='.' read -r major minor patch <<< "$latest_version"
+                version="${major}.${minor}.$((patch + 1))"
+              fi
             fi
           fi
 
-          if git rev-parse -q --verify "refs/tags/${version}" >/dev/null; then
-            echo "Tag already exists: ${version}" >&2
+          if ! validate_version "$version"; then
+            echo "非法版本号：$version" >&2
             exit 1
           fi
-          if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
-            echo "Equivalent v-prefixed tag already exists: v${version}" >&2
-            exit 1
+
+          if [[ "${GITHUB_EVENT_NAME}" != "push" ]]; then
+            if git rev-parse -q --verify "refs/tags/${version}" >/dev/null; then
+              echo "标签已存在：${version}" >&2
+              exit 1
+            fi
+
+            if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
+              echo "等价的 v 前缀标签已存在：v${version}" >&2
+              exit 1
+            fi
           fi
 
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "tag=${version}" >> "$GITHUB_OUTPUT"
-          echo "Resolved release version: ${version}"
+          echo "本次发布版本：${version}"
+
+      - name: Validate composer.json
+        run: composer validate --no-check-lock
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Run tests
+        run: composer test
 
       - name: Create and push tag
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true'
         env:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
@@ -111,9 +154,10 @@ jobs:
           git push origin "$TAG"
 
       - name: Create GitHub release
+        if: github.event_name == 'push' || github.event.inputs.publish_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          target_commitish: ${{ inputs.target_branch }}
+          tag_name: ${{ github.event_name == 'push' && github.ref_name || steps.version.outputs.tag }}
+          target_commitish: ${{ github.event_name == 'push' && github.sha || inputs.target_branch }}
           name: ${{ steps.version.outputs.version }}
           generate_release_notes: true
