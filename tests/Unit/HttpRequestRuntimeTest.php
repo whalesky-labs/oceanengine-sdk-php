@@ -112,8 +112,8 @@ final class HttpRequestRuntimeTest extends TestCase
         $containsFileMethod = new \ReflectionMethod(HttpRequest::class, 'containsFile');
         $containsFileMethod->setAccessible(true);
 
-        $buildMultipartMethod = new \ReflectionMethod(HttpRequest::class, 'buildUploadMultipartData');
-        $buildMultipartMethod->setAccessible(true);
+        $buildFieldsMethod = new \ReflectionMethod(HttpRequest::class, 'buildUploadCurlFields');
+        $buildFieldsMethod->setAccessible(true);
 
         $tempFile = tempnam(sys_get_temp_dir(), 'oe-video-');
         self::assertNotFalse($tempFile);
@@ -127,19 +127,17 @@ final class HttpRequestRuntimeTest extends TestCase
                 'video_file' => $file,
             ]));
 
-            $multipart = $buildMultipartMethod->invoke(null, [
+            $fields = $buildFieldsMethod->invoke(null, [
                 'advertiser_id' => 123,
                 'video_file' => $file,
             ]);
 
-            self::assertCount(2, $multipart);
-            self::assertSame('advertiser_id', $multipart[0]['name']);
-            self::assertSame(123, $multipart[0]['contents']);
-            self::assertSame('video_file', $multipart[1]['name']);
-            self::assertSame('sample.mp4', $multipart[1]['filename']);
-            self::assertSame(['Content-Type' => 'video/mp4'], $multipart[1]['headers']);
-            self::assertIsResource($multipart[1]['contents']);
-            fclose($multipart[1]['contents']);
+            self::assertCount(2, $fields);
+            self::assertSame(123, $fields['advertiser_id']);
+            self::assertInstanceOf(\CURLFile::class, $fields['video_file']);
+            self::assertSame($tempFile, $fields['video_file']->getFilename());
+            self::assertSame('sample.mp4', $fields['video_file']->getPostFilename());
+            self::assertSame('video/mp4', $fields['video_file']->getMimeType());
         } finally {
             @unlink($tempFile);
         }
@@ -150,8 +148,8 @@ final class HttpRequestRuntimeTest extends TestCase
         $containsFileMethod = new \ReflectionMethod(HttpRequest::class, 'containsFile');
         $containsFileMethod->setAccessible(true);
 
-        $buildMultipartMethod = new \ReflectionMethod(HttpRequest::class, 'buildUploadMultipartData');
-        $buildMultipartMethod->setAccessible(true);
+        $buildFieldsMethod = new \ReflectionMethod(HttpRequest::class, 'buildUploadCurlFields');
+        $buildFieldsMethod->setAccessible(true);
 
         self::assertTrue($containsFileMethod->invoke(null, [
             'video_file' => '@/tmp/definitely-not-found-video.mp4',
@@ -160,31 +158,30 @@ final class HttpRequestRuntimeTest extends TestCase
         $this->expectException(\Core\Exception\InvalidParamException::class);
         $this->expectExceptionMessage('client-check-error:Invalid Arguments: the file of "video_file" does not exist: /tmp/definitely-not-found-video.mp4');
 
-        $buildMultipartMethod->invoke(null, [
+        $buildFieldsMethod->invoke(null, [
             'video_file' => '@/tmp/definitely-not-found-video.mp4',
         ]);
     }
 
-    public function testAtPathUploadIsConvertedToMultipartStream(): void
+    public function testAtPathUploadIsConvertedToCurlFile(): void
     {
-        $buildMultipartMethod = new \ReflectionMethod(HttpRequest::class, 'buildUploadMultipartData');
-        $buildMultipartMethod->setAccessible(true);
+        $buildFieldsMethod = new \ReflectionMethod(HttpRequest::class, 'buildUploadCurlFields');
+        $buildFieldsMethod->setAccessible(true);
 
         $tempFile = tempnam(sys_get_temp_dir(), 'oe-video-');
         self::assertNotFalse($tempFile);
         file_put_contents($tempFile, 'test');
 
         try {
-            $multipart = $buildMultipartMethod->invoke(null, [
+            $fields = $buildFieldsMethod->invoke(null, [
                 'advertiser_id' => 123,
                 'video_file' => '@' . $tempFile,
             ]);
 
-            self::assertSame(123, $multipart[0]['contents']);
-            self::assertSame('video_file', $multipart[1]['name']);
-            self::assertSame(basename($tempFile), $multipart[1]['filename']);
-            self::assertIsResource($multipart[1]['contents']);
-            fclose($multipart[1]['contents']);
+            self::assertSame(123, $fields['advertiser_id']);
+            self::assertInstanceOf(\CURLFile::class, $fields['video_file']);
+            self::assertSame($tempFile, $fields['video_file']->getFilename());
+            self::assertSame(basename($tempFile), $fields['video_file']->getPostFilename());
         } finally {
             @unlink($tempFile);
         }
@@ -192,22 +189,32 @@ final class HttpRequestRuntimeTest extends TestCase
 
     public function testUploadRequestOptionsDisableRedirectsAndHttpErrors(): void
     {
-        $method = new \ReflectionMethod(HttpRequest::class, 'buildUploadRequestOptions');
+        $method = new \ReflectionMethod(HttpRequest::class, 'buildUploadCurlOptions');
         $method->setAccessible(true);
 
-        $multipart = [
-            ['name' => 'advertiser_id', 'contents' => 123],
-        ];
+        $tempFile = tempnam(sys_get_temp_dir(), 'oe-video-');
+        self::assertNotFalse($tempFile);
+        file_put_contents($tempFile, 'test');
 
-        $options = $method->invoke(null, $multipart, ['Content-Type' => 'multipart/form-data'], [
-            'read_timeout' => 30,
-            'connect_timeout' => 20,
-        ]);
+        try {
+            $options = $method->invoke(null, 'https://example.com/upload', 'POST', [
+                'advertiser_id' => 123,
+                'video_file' => '@' . $tempFile,
+            ], ['Content-Type' => 'multipart/form-data', 'Access-Token' => 'token'], [
+                'read_timeout' => 30,
+                'connect_timeout' => 20,
+                'verify' => true,
+            ]);
 
-        self::assertFalse($options['http_errors']);
-        self::assertFalse($options['allow_redirects']);
-        self::assertSame([], $options['headers']);
-        self::assertSame($multipart, $options['multipart']);
+            self::assertFalse($options[CURLOPT_FOLLOWLOCATION]);
+            self::assertSame(20, $options[CURLOPT_CONNECTTIMEOUT]);
+            self::assertSame(30, $options[CURLOPT_TIMEOUT]);
+            self::assertSame(['Access-Token: token'], $options[CURLOPT_HTTPHEADER]);
+            self::assertArrayHasKey(CURLOPT_POSTFIELDS, $options);
+            self::assertInstanceOf(\CURLFile::class, $options[CURLOPT_POSTFIELDS]['video_file']);
+        } finally {
+            @unlink($tempFile);
+        }
     }
 
     public function testCliRuntimeIsNotMisdetectedAsSwooleWhenNoCoroutineIsActive(): void

@@ -146,41 +146,37 @@ class HttpRequest
             throw new InvalidParamException('Upload request post fields must be an array.', 400);
         }
 
-        $multipart = self::buildUploadMultipartData($postFields);
-        $client = self::createUploadClient($config);
-        $options = self::buildUploadRequestOptions($multipart, $headers, $config);
+        $curlHandle = curl_init();
+        if ($curlHandle === false) {
+            throw new OceanEngineException('HTTP Request Error: failed to initialize cURL upload handle.', 500);
+        }
+
+        $curlOptions = self::buildUploadCurlOptions($url, $method, $postFields, $headers, $config);
+
+        curl_setopt_array($curlHandle, $curlOptions);
 
         try {
-            $response = $client->request($method, $url, $options);
+            $rawResponse = curl_exec($curlHandle);
+            if ($rawResponse === false) {
+                $errorCode = curl_errno($curlHandle);
+                $errorMessage = curl_error($curlHandle);
+
+                throw new OceanEngineException(
+                    'HTTP Request Error: cURL error ' . $errorCode . ': ' . $errorMessage . ' for ' . $url,
+                    400
+                );
+            }
+
+            $statusCode = (int) curl_getinfo($curlHandle, CURLINFO_HTTP_CODE);
+            $responseBody = (string) $rawResponse;
+
             $httpResponse = new HttpResponse();
-            $httpResponse->setBody((string) $response->getBody());
-            $httpResponse->setStatus($response->getStatusCode());
+            $httpResponse->setBody($responseBody);
+            $httpResponse->setStatus($statusCode);
 
             return $httpResponse;
-        } catch (RequestException $e) {
-            $response = $e->getResponse();
-            $statusCode = $response?->getStatusCode();
-            $responseBody = $response !== null ? (string) $response->getBody() : null;
-            $message = 'HTTP Request Error: ' . $e->getMessage();
-
-            if ($statusCode !== null) {
-                $message .= ' (HTTP ' . $statusCode . ')';
-            }
-
-            if ($responseBody !== null && $responseBody !== '') {
-                $message .= ' Response: ' . $responseBody;
-            }
-
-            $exception = new OceanEngineException(
-                $message,
-                $statusCode ?? ($e->getCode() ?: 400)
-            );
-            $exception->setHttpStatus($statusCode);
-            $exception->setResponseBody($responseBody);
-
-            throw $exception;
         } finally {
-            self::closeMultipartStreams($multipart);
+            curl_close($curlHandle);
         }
     }
 
@@ -316,24 +312,6 @@ class HttpRequest
         return new Client([
             'handler' => $stack,
             'verify' => $config['verify'],
-        ]);
-    }
-
-    /**
-     * 上传请求使用独立的 Guzzle Client，避免复用连接、流和重试中间件。
-     *
-     * @param array<string, mixed> $config
-     */
-    private static function createUploadClient(array $config): Client
-    {
-        $stack = HandlerStack::create();
-        $stack->push(self::createLogMiddleware());
-
-        return new Client([
-            'handler' => $stack,
-            'verify' => $config['verify'],
-            'http_errors' => false,
-            'allow_redirects' => false,
         ]);
     }
 
@@ -481,21 +459,49 @@ class HttpRequest
     }
 
     /**
-     * @param array<int, array<string, mixed>> $multipart
+     * @param array<string, mixed> $postFields
      * @param array<string, string> $headers
      * @param array<string, mixed> $config
-     * @return array<string, mixed>
+     * @return array<int, mixed>
      */
-    private static function buildUploadRequestOptions(array $multipart, array $headers, array $config): array
-    {
-        return [
-            'headers' => self::withoutHeader($headers, 'Content-Type'),
-            'multipart' => $multipart,
-            'timeout' => $config['read_timeout'],
-            'connect_timeout' => $config['connect_timeout'],
-            'http_errors' => false,
-            'allow_redirects' => false,
+    private static function buildUploadCurlOptions(
+        string $url,
+        string $method,
+        array $postFields,
+        array $headers,
+        array $config
+    ): array {
+        $normalizedHeaders = self::withoutHeader($headers, 'Content-Type');
+
+        $options = [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER => false,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_HTTPHEADER => self::formatCurlHeaders($normalizedHeaders),
+            CURLOPT_CONNECTTIMEOUT => $config['connect_timeout'],
+            CURLOPT_TIMEOUT => $config['read_timeout'],
+            CURLOPT_POSTFIELDS => self::buildUploadCurlFields($postFields),
+            CURLOPT_CUSTOMREQUEST => $method,
         ];
+
+        if ($method === 'POST') {
+            $options[CURLOPT_POST] = true;
+        }
+
+        if ($config['verify'] === false) {
+            $options[CURLOPT_SSL_VERIFYPEER] = false;
+            $options[CURLOPT_SSL_VERIFYHOST] = 0;
+        } else {
+            $options[CURLOPT_SSL_VERIFYPEER] = true;
+            $options[CURLOPT_SSL_VERIFYHOST] = 2;
+
+            if (is_string($config['verify'])) {
+                $options[CURLOPT_CAINFO] = $config['verify'];
+            }
+        }
+
+        return $options;
     }
 
     /**
@@ -700,14 +706,12 @@ class HttpRequest
     }
 
     /**
-     * 构建 multipart 上传数据，每次请求都重新 fopen，避免常驻进程中复用 stream。
-     *
      * @param array<string, mixed> $data
-     * @return array<int, array<string, mixed>>
+     * @return array<string, mixed>
      */
-    private static function buildUploadMultipartData(array $data): array
+    private static function buildUploadCurlFields(array $data): array
     {
-        $multipart = [];
+        $fields = [];
 
         foreach ($data as $key => $value) {
             if ($value instanceof \CURLFile) {
@@ -726,22 +730,7 @@ class HttpRequest
                     );
                 }
 
-                $stream = fopen($filename, 'rb');
-                if ($stream === false) {
-                    throw new InvalidParamException(
-                        'client-check-error:Invalid Arguments: the file of "' . $key . '" is not readable: ' . $filename,
-                        41
-                    );
-                }
-
-                $multipart[] = [
-                    'name' => $key,
-                    'contents' => $stream,
-                    'filename' => $value->getPostFilename() !== '' ? $value->getPostFilename() : basename($filename),
-                    'headers' => $value->getMimeType() !== '' ? [
-                        'Content-Type' => $value->getMimeType(),
-                    ] : [],
-                ];
+                $fields[$key] = $value;
                 continue;
             }
 
@@ -761,41 +750,41 @@ class HttpRequest
                     );
                 }
 
-                $stream = fopen($path, 'rb');
-                if ($stream === false) {
+                if (! is_readable($path)) {
                     throw new InvalidParamException(
                         'client-check-error:Invalid Arguments: the file of "' . $key . '" is not readable: ' . $path,
                         41
                     );
                 }
 
-                $multipart[] = [
-                    'name' => $key,
-                    'contents' => $stream,
-                    'filename' => basename($path),
-                ];
+                $mimeType = mime_content_type($path);
+                $fields[$key] = new \CURLFile(
+                    $path,
+                    is_string($mimeType) && $mimeType !== '' ? $mimeType : 'application/octet-stream',
+                    basename($path)
+                );
                 continue;
             }
 
-            $multipart[] = [
-                'name' => $key,
-                'contents' => is_bool($value) ? ($value ? '1' : '0') : $value,
-            ];
+            $fields[$key] = is_bool($value) ? ($value ? '1' : '0') : $value;
         }
 
-        return $multipart;
+        return $fields;
     }
 
     /**
-     * @param array<int, array<string, mixed>> $multipart
+     * @param array<string, string> $headers
+     * @return array<int, string>
      */
-    private static function closeMultipartStreams(array $multipart): void
+    private static function formatCurlHeaders(array $headers): array
     {
-        foreach ($multipart as $part) {
-            if (isset($part['contents']) && is_resource($part['contents'])) {
-                fclose($part['contents']);
-            }
+        $result = [];
+
+        foreach ($headers as $name => $value) {
+            $result[] = $name . ': ' . $value;
         }
+
+        return $result;
     }
 
     /**
