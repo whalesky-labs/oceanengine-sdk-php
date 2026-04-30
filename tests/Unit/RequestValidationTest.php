@@ -165,6 +165,40 @@ final class RequestValidationTest extends TestCase
             $request->check();
 
             self::assertSame('UPLOAD_BY_FILE', $request->getParams()['upload_type']);
+            self::assertFalse($request->shouldEnableRetry());
+        } finally {
+            @unlink($tempFile);
+        }
+    }
+
+    public function testFileVideoAdKeepsRetryEnabledWhenUploadingByUrl(): void
+    {
+        $request = new FileVideoAd();
+        $request->setParams([
+            'advertiser_id' => 123,
+            'upload_type' => 'UPLOAD_BY_URL',
+            'video_url' => 'https://example.com/video.mp4',
+        ]);
+
+        $request->check();
+
+        self::assertTrue($request->shouldEnableRetry());
+    }
+
+    public function testGenericRpcRequestDisablesRetryWhenParamsContainCurlFile(): void
+    {
+        $tempFile = tempnam(sys_get_temp_dir(), 'oe-upload-');
+        self::assertNotFalse($tempFile);
+        file_put_contents($tempFile, 'payload');
+
+        try {
+            $request = new class() extends \Core\Profile\RpcRequest {
+            };
+            $request->setParams([
+                'file' => new \CURLFile($tempFile, 'text/plain', 'payload.txt'),
+            ]);
+
+            self::assertFalse($request->shouldEnableRetry());
         } finally {
             @unlink($tempFile);
         }
