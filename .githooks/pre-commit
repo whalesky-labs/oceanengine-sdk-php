@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 
+php scripts/project-rules.php validate
 php scripts/changelog.php validate
 
 staged_files="$(git diff --cached --name-only --diff-filter=ACDMRTUXB)"

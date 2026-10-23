@@ -20,6 +20,9 @@ jobs:
           php-version: "8.2"
           coverage: none
 
+      - name: Validate project rules
+        run: php scripts/project-rules.php validate
+
       - name: Validate CHANGELOG.md
         run: php scripts/changelog.php validate
 

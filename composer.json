@@ -45,6 +45,7 @@
   "minimum-stability": "dev",
   "prefer-stable": true,
   "scripts": {
+    "rules:validate": "php scripts/project-rules.php validate",
     "changelog:validate": "php scripts/changelog.php validate",
     "changelog:extract": "php scripts/changelog.php extract",
     "hooks:install": "git config core.hooksPath .githooks",

@@ -136,6 +136,7 @@ jobs:
         if: github.event_name == 'push' || github.event.inputs.publish_release == 'true'
         run: |
           set -euo pipefail
+          php scripts/project-rules.php validate
           php scripts/changelog.php validate --version "${{ steps.version.outputs.version }}"
           php scripts/changelog.php extract --version "${{ steps.version.outputs.version }}" > release-notes.md
           test -s release-notes.md

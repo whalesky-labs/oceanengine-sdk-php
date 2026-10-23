@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+commit_subject="$(sed -n '1p' "$1")"
+case "$commit_subject" in
+    Merge\ *|Revert\ *)
+        exit 0
+        ;;
+esac
+
+if ! printf '%s\n' "$commit_subject" | grep -Eq '^(feat|fix|docs|test|refactor|perf|chore|build|ci|revert|style)(\([^)]+\))?!?: .+'; then
+    echo '提交信息必须符合 Conventional Commits：type(scope): subject。' >&2
+    exit 1
+fi

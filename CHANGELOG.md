@@ -7,6 +7,7 @@
 ### 新增
 
 - 新增工作台视频素材相关 API。
+- 新增根目录 `AGENTS.md`，统一约束项目开发、测试、提交、推送和发布流程。
 
 ### 修复
 
@@ -19,12 +20,13 @@
 
 ### 构建
 
-- 增加提交前、推送前和 CI 中的 CHANGELOG 格式及同步校验。
+- 增加 Conventional Commits 提交信息校验，以及提交前、推送前和 CI 中的 CHANGELOG 格式及同步校验。
+- 增加项目规范自动校验，确保 `AGENTS.md`、Composer、Hooks、CI 和发布流程保持一致。
 - 发布工作流提取对应版本的完整 CHANGELOG 内容作为 GitHub Release 正文。
 
 ### 文档
 
-- 补充 CHANGELOG 分类规范、Git Hooks 启用方式和发布规则。
+- 补充项目规范入口、CHANGELOG 分类规范、Git Hooks 启用方式和发布规则。
 
 ## [4.0.3] - 2026-04-30
 
