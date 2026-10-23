@@ -6,7 +6,7 @@ $root = dirname(__DIR__);
 $changelogPath = $root . '/CHANGELOG.md';
 $command = $argv[1] ?? 'validate';
 
-function fail(string $message): never
+function fail(string $message): void
 {
     fwrite(STDERR, $message . PHP_EOL);
     exit(1);
