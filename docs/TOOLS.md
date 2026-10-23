@@ -318,6 +318,22 @@
 | 新建字节小游戏       | WorkspaceUpgrade->ToolsEbpMicroGameCreate()       | 巨量广告 |
 | 更新字节小游戏       | WorkspaceUpgrade->ToolsEbpMicroGameUpdate()       | 巨量广告 |
 
+## VideoMaterialManagement 视频素材管理
+
+### WorkspaceUpgrade 升级版工作台（EBP）
+
+> 调用入口：`$client->Tools()->VideoMaterialManagement->WorkspaceUpgrade`
+
+| 方法名称 | 调用方法 | 请求方式 |
+| -------- | -------- | -------- |
+| 上传视频 | WorkspaceUpgrade->ToolsEbpVideoUpload() | POST multipart/form-data |
+| 更新视频信息 | WorkspaceUpgrade->ToolsEbpVideoUpdate() | POST JSON |
+| 删除视频 | WorkspaceUpgrade->ToolsEbpVideoDelete() | POST JSON |
+| 创建素材授权 | WorkspaceUpgrade->ToolsEbpMaterialAuthCreate() | POST JSON |
+| 查询素材授权 | WorkspaceUpgrade->ToolsEbpMaterialAuthList() | GET |
+| 删除素材授权 | WorkspaceUpgrade->ToolsEbpMaterialAuthDelete() | POST JSON |
+| 查询视频素材属性 | WorkspaceUpgrade->ToolsEbpVideoAttributesList() | GET |
+
 ## MiniAppSharing 小程序/小游戏共享管理（微信&字节）
 
 | 方法名称                  | 调用方法                                            | 支持平台 |
