@@ -1,7 +1,14 @@
 <?php
 
 declare(strict_types=1);
-
+/**
+ * This file is part of Marketing PHP SDK.
+ *
+ * @link     https://github.com/westng/oceanengine-sdk-php
+ * @document https://github.com/westng/oceanengine-sdk-php
+ * @contact  westng
+ * @license  https://github.com/westng/oceanengine-sdk-php/blob/main/LICENSE
+ */
 $root = dirname(__DIR__);
 $changelogPath = $root . '/CHANGELOG.md';
 $command = $argv[1] ?? 'validate';
@@ -14,7 +21,7 @@ function fail(string $message): void
 
 function readChangelog(string $path): string
 {
-    if (!is_file($path)) {
+    if (! is_file($path)) {
         fail('CHANGELOG.md 不存在。');
     }
 
@@ -33,7 +40,7 @@ function parseSections(string $content): array
     $sections = [];
     $count = count($matches[0]);
 
-    for ($index = 0; $index < $count; $index++) {
+    for ($index = 0; $index < $count; ++$index) {
         $start = $matches[0][$index][1];
         $end = $index + 1 < $count ? $matches[0][$index + 1][1] : strlen($content);
         $raw = trim(substr($content, $start, $end - $start));
@@ -57,12 +64,12 @@ function normalizeVersion(string $version): string
 function versionFromArguments(array $arguments): string
 {
     $versionIndex = array_search('--version', $arguments, true);
-    if ($versionIndex === false || !isset($arguments[$versionIndex + 1])) {
+    if ($versionIndex === false || ! isset($arguments[$versionIndex + 1])) {
         fail('必须通过 --version 指定版本号。');
     }
 
     $version = normalizeVersion((string) $arguments[$versionIndex + 1]);
-    if (!preg_match('/^\d+\.\d+\.\d+$/', $version)) {
+    if (! preg_match('/^\d+\.\d+\.\d+$/', $version)) {
         fail('版本号不是合法的语义化版本：' . $version);
     }
 
@@ -110,7 +117,7 @@ function validateSections(array $sections, ?string $version = null): void
     foreach ($sections as $section) {
         if ($section['name'] !== '未发布') {
             $normalizedVersion = normalizeVersion($section['name']);
-            if (!preg_match('/^\d+\.\d+\.\d+$/', $normalizedVersion)) {
+            if (! preg_match('/^\d+\.\d+\.\d+$/', $normalizedVersion)) {
                 fail('CHANGELOG.md 中存在非法版本段：[' . $section['name'] . ']。');
             }
             if (isset($seenVersions[$normalizedVersion])) {
@@ -123,11 +130,11 @@ function validateSections(array $sections, ?string $version = null): void
         if ($sectionCategories === []) {
             fail('版本 [' . $section['name'] . '] 至少需要一个分类标题。');
         }
-        if (!preg_match('/^-\\s+\\S/m', $section['body'])) {
+        if (! preg_match('/^-\s+\S/m', $section['body'])) {
             fail('版本 [' . $section['name'] . '] 至少需要一个实际变更条目。');
         }
         foreach ($sectionCategories as $category) {
-            if (!in_array($category, $allowedCategories, true)) {
+            if (! in_array($category, $allowedCategories, true)) {
                 fail('版本 [' . $section['name'] . '] 使用了不支持的分类：' . $category . '。');
             }
         }
@@ -162,7 +169,7 @@ if ($command === 'extract') {
 if ($command === 'changed') {
     $baseIndex = array_search('--base', $argv, true);
     $headIndex = array_search('--head', $argv, true);
-    if ($baseIndex === false || !isset($argv[$baseIndex + 1]) || $headIndex === false || !isset($argv[$headIndex + 1])) {
+    if ($baseIndex === false || ! isset($argv[$baseIndex + 1]) || $headIndex === false || ! isset($argv[$headIndex + 1])) {
         fail('changed 命令需要 --base 和 --head。');
     }
 
@@ -186,7 +193,7 @@ if ($command === 'changed') {
 
     $changedFiles = array_values(array_filter(array_map('trim', $output)));
     $hasOtherChanges = array_filter($changedFiles, static fn (string $file): bool => $file !== 'CHANGELOG.md');
-    if ($hasOtherChanges !== [] && !in_array('CHANGELOG.md', $changedFiles, true)) {
+    if ($hasOtherChanges !== [] && ! in_array('CHANGELOG.md', $changedFiles, true)) {
         fail("本次提交包含项目变更，但没有同步更新 CHANGELOG.md。\n变更文件：" . implode(', ', $changedFiles));
     }
 
@@ -207,13 +214,13 @@ if ($command === 'changed') {
             if (str_starts_with($line, '+++')) {
                 continue;
             }
-            if (preg_match('/^\\+\\s*(?:-\\s+\\S|## \\[(?:未发布|\\d+\\.\\d+\\.\\d+)\\]|###\\s+\\S)/u', $line)) {
+            if (preg_match('/^\+\s*(?:-\s+\S|## \[(?:未发布|\d+\.\d+\.\d+)\]|###\s+\S)/u', $line)) {
                 $hasEntryChange = true;
                 break;
             }
         }
 
-        if (!$hasEntryChange) {
+        if (! $hasEntryChange) {
             fail('本次提交虽然修改了 CHANGELOG.md，但没有新增版本段、分类标题或变更条目。');
         }
     }

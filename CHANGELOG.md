@@ -22,6 +22,7 @@
 
 - 增加 Conventional Commits 提交信息校验，以及提交前、推送前和 CI 中的 CHANGELOG 格式及同步校验。
 - 增加项目规范自动校验，确保 `AGENTS.md`、Composer、Hooks、CI 和发布流程保持一致。
+- 按项目现有 PHP 格式化规则整理 CHANGELOG 校验脚本。
 - 发布工作流提取对应版本的完整 CHANGELOG 内容作为 GitHub Release 正文。
 
 ### 文档
