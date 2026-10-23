@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+
+php scripts/changelog.php validate
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ -n "$local_sha" ] || continue
+    [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
+
+    if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+        base_sha="$(git rev-list --max-parents=0 "$local_sha" | tail -n 1)"
+    else
+        base_sha="$remote_sha"
+    fi
+
+    php scripts/changelog.php changed --base "$base_sha" --head "$local_sha"
+done

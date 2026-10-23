@@ -145,6 +145,7 @@ oceanengine-sdk-php/
 ├── 📄 composer.json                            # Composer 配置
 ├── 📄 LICENSE                                  # 开源协议
 ├── 📄 README.md                                # 项目说明
+├── 📄 CHANGELOG.md                             # 更新日志
 ├── 📄 HTTP_MIGRATION.md                        # HTTP迁移文档
 ├── 📄 CONFIG_GUIDE.md                          # 配置管理指南
 ├── 📄 ERROR_CODES_GUIDE.md                     # 错误码说明
@@ -383,6 +384,7 @@ try {
 - [⚙️ 配置管理指南](CONFIG_GUIDE.md) - 学习如何使用.env 文件和配置管理
 - [🚨 错误码说明](ERROR_CODES_GUIDE.md) - 了解 HTTP 状态码和业务错误码的处理
 - [🧪 测试文件迁移指南](TEST_MIGRATION.md) - 了解测试文件的现代化改进
+- [📝 更新日志](CHANGELOG.md) - 查看各版本按分类整理的新增、修复和变更内容
 
 ## 🤝 贡献指南
 
@@ -420,13 +422,23 @@ docs(readme): 补充链式调用与模块说明
 test(integration): 增加 OAuth 刷新 token 用例
 ```
 
-### 3 提交前检查
+### 3 更新日志规范
 
+- 每次提交或推送项目代码、配置、测试、文档或发布流程变更时，必须同步更新 `CHANGELOG.md`。
+- 日常开发内容写入顶部的 `## [未发布]`，并按 `新增`、`修复`、`变更`、`文档`、`测试`、`构建` 等分类记录。
+- 发布前将本次内容整理到对应的 `## [版本号]` 段落；版本段必须至少包含一个分类，不能只填写提交信息。
+- 执行 `composer hooks:install` 启用版本化 Git Hooks；提交前和推送前会校验日志格式及同步情况。
+- CI 会在 Pull Request 和所有分支推送时校验日志格式，并阻止未同步更新 `CHANGELOG.md` 的项目变更。
+- 发布工作流会提取对应版本的完整日志段作为 GitHub Release 正文；目标版本缺少日志时发布失败。
+
+### 4 提交前检查
+
+- 本地执行：`composer changelog:validate`
 - 本地执行：`composer test`
 - 格式检查：`vendor/bin/php-cs-fixer fix --dry-run --sequential`
 - 若涉及行为变更，请同步更新 `README.md` 或 `docs/*`
 
-### 4 Pull Request 要求
+### 5 Pull Request 要求
 
 - 标题清晰说明“做了什么、为什么做”
 - 描述中包含影响范围（模块/接口）与验证方式

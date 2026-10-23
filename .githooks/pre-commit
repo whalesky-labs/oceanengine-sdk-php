@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+
+php scripts/changelog.php validate
+
+staged_files="$(git diff --cached --name-only --diff-filter=ACDMRTUXB)"
+if [ -z "$staged_files" ]; then
+    exit 0
+fi
+
+if printf '%s\n' "$staged_files" | grep -v '^CHANGELOG.md$' | grep -q . \
+    && ! printf '%s\n' "$staged_files" | grep -qx 'CHANGELOG.md'; then
+    echo '提交包含项目变更时，必须同时暂存 CHANGELOG.md。' >&2
+    exit 1
+fi
+
+printf '%s\n' '提交前 CHANGELOG 校验通过。'

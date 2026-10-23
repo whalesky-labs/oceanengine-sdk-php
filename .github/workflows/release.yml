@@ -132,6 +132,14 @@ jobs:
           echo "tag=${version}" >> "$GITHUB_OUTPUT"
           echo "本次发布版本：${version}"
 
+      - name: Validate and extract changelog
+        if: github.event_name == 'push' || github.event.inputs.publish_release == 'true'
+        run: |
+          set -euo pipefail
+          php scripts/changelog.php validate --version "${{ steps.version.outputs.version }}"
+          php scripts/changelog.php extract --version "${{ steps.version.outputs.version }}" > release-notes.md
+          test -s release-notes.md
+
       - name: Validate composer.json
         run: composer validate --no-check-lock
 
@@ -159,4 +167,5 @@ jobs:
           tag_name: ${{ github.event_name == 'push' && github.ref_name || steps.version.outputs.tag }}
           target_commitish: ${{ github.event_name == 'push' && github.sha || inputs.target_branch }}
           name: ${{ steps.version.outputs.version }}
-          generate_release_notes: true
+          body_path: release-notes.md
+          generate_release_notes: false

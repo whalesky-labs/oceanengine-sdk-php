@@ -45,6 +45,9 @@
   "minimum-stability": "dev",
   "prefer-stable": true,
   "scripts": {
+    "changelog:validate": "php scripts/changelog.php validate",
+    "changelog:extract": "php scripts/changelog.php extract",
+    "hooks:install": "git config core.hooksPath .githooks",
     "cs-fix": "php-cs-fixer fix",
     "test:unit": "php -d zend.assertions=1 -d assert.exception=1 vendor/bin/phpunit --testsuite unit",
     "test:module": "php -d zend.assertions=1 -d assert.exception=1 vendor/bin/phpunit --testsuite module",
