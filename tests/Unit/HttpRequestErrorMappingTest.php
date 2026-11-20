@@ -13,7 +13,9 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use Core\Exception\OceanEngineException;
+use Core\Http\HttpRequest;
 use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
@@ -57,26 +59,14 @@ final class HttpRequestErrorMappingTest extends TestCase
 
     private function mapRequestException(RequestException $e): OceanEngineException
     {
-        $response = $e->getResponse();
-        $statusCode = $response?->getStatusCode();
-        $responseBody = $response !== null ? (string) $response->getBody() : null;
-        $message = 'HTTP Request Error: ' . $e->getMessage();
-
-        if ($statusCode !== null) {
-            $message .= ' (HTTP ' . $statusCode . ')';
+        try {
+            HttpRequest::curl((string) $e->getRequest()->getUri(), runtimeConfig: [
+                'enable_retry' => false,
+                'handler' => new MockHandler([$e]),
+            ]);
+            self::fail('Expected the SDK to map the Guzzle exception.');
+        } catch (OceanEngineException $exception) {
+            return $exception;
         }
-
-        if ($responseBody !== null && $responseBody !== '') {
-            $message .= ' Response: ' . $responseBody;
-        }
-
-        $exception = new OceanEngineException(
-            $message,
-            $statusCode ?? ($e->getCode() ?: 400)
-        );
-        $exception->setHttpStatus($statusCode);
-        $exception->setResponseBody($responseBody);
-
-        return $exception;
     }
 }

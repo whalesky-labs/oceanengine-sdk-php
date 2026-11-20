@@ -12,13 +12,18 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
+use Api\Account\AccountRel\Oauth2AdvertiserGet;
 use Api\Account\AccountRel\QianChuanUniPromotionAuthInit;
 use Core\Exception\InvalidParamException;
 use Core\Http\HttpRequest;
 use Core\Profile\ChainProxy;
 use Core\Profile\RpcRequest;
+use GuzzleHttp\Handler\MockHandler;
+use GuzzleHttp\Psr7\Response;
+use OceanEngineSDK\OceanEngineAuth;
 use OceanEngineSDK\OceanEngineClient;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 
 /**
  * @internal
@@ -146,6 +151,49 @@ final class OceanEngineClientTest extends TestCase
         $this->expectExceptionMessage('请求参数 JSON 编码失败');
 
         $client->execute($request);
+    }
+
+    public function testInjectedHttpHandlersAreIsolatedAcrossClients(): void
+    {
+        $url = 'http://127.0.0.1:1';
+        $handlerA = new MockHandler([new Response(200, [], '{"source":"a"}')]);
+        $handlerB = new MockHandler([new Response(200, [], '{"source":"b"}')]);
+        $oauthHandler = new MockHandler([new Response(200, [], '{"source":"oauth"}')]);
+        $clientA = new OceanEngineClient('fixture-token-a', serverUrl: $url, httpHandler: $handlerA);
+        $clientB = new OceanEngineClient('fixture-token-b', serverUrl: $url, httpHandler: $handlerB);
+        $auth = new OceanEngineAuth('1', 'fixture-secret', server_url: $url, httpHandler: $oauthHandler);
+
+        self::assertSame(['source' => 'a'], (new Oauth2AdvertiserGet($clientA))->send()->getJsonBody());
+        self::assertSame(['source' => 'oauth'], $auth->getAccessToken('fixture-code'));
+        self::assertSame(['source' => 'b'], (new Oauth2AdvertiserGet($clientB))->send()->getJsonBody());
+        self::assertSame('fixture-token-a', $handlerA->getLastRequest()->getHeaderLine('Access-Token'));
+        self::assertSame('fixture-token-b', $handlerB->getLastRequest()->getHeaderLine('Access-Token'));
+        self::assertSame('POST', $oauthHandler->getLastRequest()->getMethod());
+    }
+
+    public function testMalformedJsonRemainsAnErrorWithRedactedResponseLogging(): void
+    {
+        $body = '{"secret":"fixture-response-body' . "\xff" . '"}';
+        $handler = new MockHandler([new Response(200, [
+            'Content-Length' => (string) strlen($body),
+            'X-Encoded-Content-Length' => '123',
+            'X-Encoded-Content-Encoding' => 'fixture-sensitive-value',
+            'Set-Cookie' => 'fixture-cookie',
+        ], $body)]);
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects(self::once())->method('debug')->with('OceanEngine HTTP response', [
+            'http_status' => 200,
+            'content_encoding' => 'other',
+            'content_length' => 123,
+            'body_bytes' => strlen($body),
+        ]);
+        $client = new OceanEngineClient('fixture-access-token', serverUrl: 'http://127.0.0.1:1', httpHandler: $handler, responseLogger: $logger);
+        $response = (new Oauth2AdvertiserGet($client))->send();
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Malformed UTF-8');
+
+        $response->getJsonBody();
     }
 
     public function testClientVerifyConfigCanBeOverriddenIndependently(): void

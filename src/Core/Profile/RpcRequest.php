@@ -172,14 +172,19 @@ class RpcRequest implements RequestInterface
         $reflection = new \ReflectionObject($this);
         foreach ($reflection->getProperties() as $property) {
             $type = $property->getType();
-            if ($type !== null && ! $type->allowsNull()) {
-                // PHP 8.1+ 检查 typed property 是否已初始化
-                if (method_exists($property, 'isInitialized') && ! $property->isInitialized($this)) {
-                    throw new InvalidParamException(sprintf(
-                        '参数 %s 不能为空',
-                        $property->getName()
-                    ), 400);
-                }
+            if ($type === null || $type->allowsNull()) {
+                continue;
+            }
+
+            if (PHP_VERSION_ID < 80100 && ! $property->isPublic()) {
+                $property->setAccessible(true);
+            }
+
+            if (! $property->isInitialized($this)) {
+                throw new InvalidParamException(sprintf(
+                    '参数 %s 不能为空',
+                    $property->getName()
+                ), 400);
             }
         }
     }

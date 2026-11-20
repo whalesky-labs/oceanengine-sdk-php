@@ -19,6 +19,7 @@ use Core\Http\HttpResponse;
 use Core\Profile\RequestInterface;
 use Oauth\GetAccessToken;
 use Oauth\RefreshToken;
+use Psr\Log\LoggerInterface;
 
 class OceanEngineAuth
 {
@@ -36,6 +37,8 @@ class OceanEngineAuth
 
     public bool $is_sandbox = false;
 
+    private ?\Closure $httpHandler;
+
     /**
      * AuthClient constructor.
      *
@@ -50,9 +53,12 @@ class OceanEngineAuth
         string $secret,
         bool $is_sandbox = false,
         ?string $server_url = null,
-        ?string $box_url = null
+        ?string $box_url = null,
+        ?callable $httpHandler = null,
+        private ?LoggerInterface $responseLogger = null
     ) {
         $this->app_id = $app_id;
+        $this->httpHandler = $httpHandler !== null ? \Closure::fromCallable($httpHandler) : null;
         $this->secret = $secret;
         $this->is_sandbox = $is_sandbox;
         if ($server_url) {
@@ -139,7 +145,11 @@ class OceanEngineAuth
             $request->getMethod(),
             $encodedParams,
             $headers,
-            ['read_timeout' => $request->getTimeout()]
+            [
+                'read_timeout' => $request->getTimeout(),
+                'handler' => $this->httpHandler,
+                'response_logger' => $this->responseLogger,
+            ]
         );
     }
 }

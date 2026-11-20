@@ -114,7 +114,11 @@ function validateSections(array $sections, ?string $version = null): void
     ];
     $seenVersions = [];
 
-    foreach ($sections as $section) {
+    foreach ($sections as $index => $section) {
+        if ($index === 0 && $section['body'] === '') {
+            continue;
+        }
+
         if ($section['name'] !== '未发布') {
             $normalizedVersion = normalizeVersion($section['name']);
             if (! preg_match('/^\d+\.\d+\.\d+$/', $normalizedVersion)) {

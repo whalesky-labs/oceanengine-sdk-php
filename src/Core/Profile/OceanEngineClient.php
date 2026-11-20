@@ -18,6 +18,7 @@ use Core\Http\HttpRequest;
 use Core\Http\HttpResponse;
 use Core\Profile\ChainProxy;
 use Core\Profile\RequestInterface;
+use Psr\Log\LoggerInterface;
 
 /**
  * SDK client.
@@ -71,6 +72,8 @@ class OceanEngineClient
 
     private bool|string $verify;
 
+    private ?\Closure $httpHandler;
+
     /**
      * 顶层模块映射缓存（模块名 => 命名空间）.
      *
@@ -85,9 +88,12 @@ class OceanEngineClient
         string $accessToken,
         bool $isSandbox = false,
         ?string $serverUrl = null,
-        ?string $boxUrl = null
+        ?string $boxUrl = null,
+        ?callable $httpHandler = null,
+        private ?LoggerInterface $responseLogger = null
     ) {
         $this->accessToken = $accessToken;
+        $this->httpHandler = $httpHandler !== null ? \Closure::fromCallable($httpHandler) : null;
         $this->isSandbox = $isSandbox;
         $this->serverUrl = $serverUrl ?? 'https://api.oceanengine.com/open_api';
         $this->boxUrl = $boxUrl ?? 'https://api.oceanengine.com/open_api';
@@ -303,6 +309,8 @@ class OceanEngineClient
             'retryable_status_codes' => $this->retryableStatusCodes,
             'retryable_business_codes' => $this->retryableBusinessCodes,
             'verify' => $this->verify,
+            'handler' => $this->httpHandler,
+            'response_logger' => $this->responseLogger,
         ];
     }
 

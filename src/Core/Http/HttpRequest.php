@@ -19,12 +19,12 @@ use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Exception\ServerException;
 use GuzzleHttp\HandlerStack;
-use GuzzleHttp\MessageFormatter;
 use GuzzleHttp\Middleware;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
-use Psr\Log\NullLogger;
+use Psr\Log\LoggerInterface;
 use Swoole\Coroutine;
+use Swoole\Runtime;
 
 class HttpRequest
 {
@@ -87,6 +87,10 @@ class HttpRequest
         $config = self::normalizeRuntimeConfig($runtimeConfig);
         $method = strtoupper($method);
 
+        if (self::usesLegacyCurlHook() && ! array_key_exists('accept-encoding', array_change_key_case($headers))) {
+            $headers['Accept-Encoding'] = 'identity';
+        }
+
         if (self::shouldUseUploadRequestPath($method, $postFields)) {
             return self::sendUploadRequest($url, $method, $postFields, $headers, $config);
         }
@@ -94,19 +98,17 @@ class HttpRequest
         $runtimeMode = self::resolveRuntimeMode($config);
         $client = self::getClient($config, $runtimeMode);
         $options = self::buildStandardRequestOptions($method, $postFields, $headers, $config);
+        $logger = $config['response_logger'];
 
         try {
             $response = $client->request($method, $url, $options);
-
-            $httpResponse = new HttpResponse();
-            $httpResponse->setBody((string) $response->getBody());
-            $httpResponse->setStatus($response->getStatusCode());
-
-            return $httpResponse;
         } catch (RequestException $e) {
             $response = $e->getResponse();
             $statusCode = $response?->getStatusCode();
             $responseBody = $response !== null ? (string) $response->getBody() : null;
+            if ($logger !== null && $response !== null) {
+                self::logStandardResponse($logger, $response, strlen($responseBody));
+            }
             $message = 'HTTP Request Error: ' . $e->getMessage();
 
             if ($statusCode !== null) {
@@ -126,6 +128,17 @@ class HttpRequest
 
             throw $exception;
         }
+
+        $body = (string) $response->getBody();
+        if ($logger !== null) {
+            self::logStandardResponse($logger, $response, strlen($body));
+        }
+
+        $httpResponse = new HttpResponse();
+        $httpResponse->setBody($body);
+        $httpResponse->setStatus($response->getStatusCode());
+
+        return $httpResponse;
     }
 
     /**
@@ -152,6 +165,24 @@ class HttpRequest
         }
 
         $curlOptions = self::buildUploadCurlOptions($url, $method, $postFields, $headers, $config);
+        $logger = $config['response_logger'];
+        $responseHeaders = [];
+
+        if ($logger !== null) {
+            $curlOptions[CURLOPT_HEADERFUNCTION] = static function ($handle, string $line) use (&$responseHeaders): int {
+                if (str_starts_with($line, 'HTTP/')) {
+                    $responseHeaders = [];
+                } else {
+                    [$name, $value] = array_pad(explode(':', $line, 2), 2, '');
+                    $name = strtolower($name);
+                    if ($name === 'content-encoding' || $name === 'content-length') {
+                        $responseHeaders[$name] = trim($value);
+                    }
+                }
+
+                return strlen($line);
+            };
+        }
 
         curl_setopt_array($curlHandle, $curlOptions);
 
@@ -169,6 +200,15 @@ class HttpRequest
 
             $statusCode = (int) curl_getinfo($curlHandle, CURLINFO_HTTP_CODE);
             $responseBody = (string) $rawResponse;
+            if ($logger !== null) {
+                self::logResponse(
+                    $logger,
+                    $statusCode,
+                    strlen($responseBody),
+                    $responseHeaders['content-encoding'] ?? '',
+                    $responseHeaders['content-length'] ?? ''
+                );
+            }
 
             $httpResponse = new HttpResponse();
             $httpResponse->setBody($responseBody);
@@ -279,7 +319,7 @@ class HttpRequest
      */
     private static function getClient(array $config, string $runtimeMode): Client
     {
-        if (! self::shouldUseClientPool($config, $runtimeMode)) {
+        if (isset($config['handler']) || ! self::shouldUseClientPool($config, $runtimeMode)) {
             return self::createClient($config);
         }
 
@@ -301,13 +341,11 @@ class HttpRequest
      */
     private static function createClient(array $config): Client
     {
-        $stack = HandlerStack::create();
+        $stack = HandlerStack::create($config['handler'] ?? null);
 
         if ($config['enable_retry']) {
             $stack->push(self::createRetryMiddleware($config));
         }
-
-        $stack->push(self::createLogMiddleware());
 
         return new Client([
             'handler' => $stack,
@@ -409,21 +447,36 @@ class HttpRequest
         );
     }
 
-    /**
-     * 创建日志中间件.
-     */
-    private static function createLogMiddleware(): callable
+    private static function logStandardResponse(LoggerInterface $logger, ResponseInterface $response, int $bodyLength): void
     {
-        return Middleware::log(
-            new NullLogger(),
-            new MessageFormatter(
-                "HTTP Request: {method} {uri}\n"
-                . "HTTP Response: {code} {phrase}\n"
-                . "Request Time: {req_time}s\n"
-                . 'Response Time: {res_time}s'
-            ),
-            'info'
+        self::logResponse(
+            $logger,
+            $response->getStatusCode(),
+            $bodyLength,
+            $response->getHeaderLine('X-Encoded-Content-Encoding') ?: $response->getHeaderLine('Content-Encoding'),
+            $response->getHeaderLine('X-Encoded-Content-Length') ?: $response->getHeaderLine('Content-Length')
         );
+    }
+
+    private static function logResponse(
+        LoggerInterface $logger,
+        int $statusCode,
+        int $bodyLength,
+        string $encoding,
+        string $encodedLength
+    ): void {
+        $encoding = strtolower(trim($encoding));
+        if ($encoding !== '' && ! in_array($encoding, ['identity', 'gzip', 'x-gzip', 'deflate', 'br', 'zstd'], true)) {
+            $encoding = 'other';
+        }
+        $contentLength = filter_var($encodedLength, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+
+        $logger->debug('OceanEngine HTTP response', [
+            'http_status' => $statusCode,
+            'content_encoding' => $encoding === '' ? null : $encoding,
+            'content_length' => $contentLength === false ? null : $contentLength,
+            'body_bytes' => $bodyLength,
+        ]);
     }
 
     /**
@@ -479,15 +532,12 @@ class HttpRequest
             CURLOPT_HEADER => false,
             CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_HTTPHEADER => self::formatCurlHeaders($normalizedHeaders),
+            CURLOPT_ENCODING => array_change_key_case($normalizedHeaders)['accept-encoding'] ?? '',
             CURLOPT_CONNECTTIMEOUT => $config['connect_timeout'],
             CURLOPT_TIMEOUT => $config['read_timeout'],
             CURLOPT_POSTFIELDS => self::buildUploadCurlFields($postFields),
             CURLOPT_CUSTOMREQUEST => $method,
         ];
-
-        if ($method === 'POST') {
-            $options[CURLOPT_POST] = true;
-        }
 
         if ($config['verify'] === false) {
             $options[CURLOPT_SSL_VERIFYPEER] = false;
@@ -544,6 +594,8 @@ class HttpRequest
             'max_retries' => $maxRetries,
             'retry_delay' => $retryDelay,
             'verify' => self::normalizeVerifyValue($runtimeConfig['verify'] ?? null, self::$verify),
+            'handler' => is_callable($runtimeConfig['handler'] ?? null) ? $runtimeConfig['handler'] : null,
+            'response_logger' => ($runtimeConfig['response_logger'] ?? null) instanceof LoggerInterface ? $runtimeConfig['response_logger'] : null,
             'retryable_status_codes' => self::normalizeIntArray(
                 $runtimeConfig['retryable_status_codes'] ?? null,
                 self::$retryableStatusCodes
@@ -690,6 +742,13 @@ class HttpRequest
     private static function isFpmRuntime(): bool
     {
         return PHP_SAPI === 'fpm-fcgi' || PHP_SAPI === 'cgi-fcgi';
+    }
+
+    private static function usesLegacyCurlHook(): bool
+    {
+        return self::isSwooleRuntime()
+            && defined('SWOOLE_HOOK_CURL')
+            && (Runtime::getHookFlags() & SWOOLE_HOOK_CURL) !== 0;
     }
 
     private static function isSwooleRuntime(): bool
