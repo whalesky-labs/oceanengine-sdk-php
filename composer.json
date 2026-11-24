@@ -12,7 +12,7 @@
   "license": "MIT",
   "require": {
     "php": ">=8.0",
-    "guzzlehttp/guzzle": "^7.16.3",
+    "guzzlehttp/guzzle": "^7.16.3 || ^8.0.0",
     "psr/log": "^1.1 || ^2.0 || ^3.0"
   },
   "authors": [
